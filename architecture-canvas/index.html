@@ -42,7 +42,9 @@
     padding: 0 16px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
+    overflow-x: auto; scrollbar-width: none;
   }
+  header::-webkit-scrollbar { display: none; }
   header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
   header .tag {
     font-size: 11px; color: var(--muted); border: 1px solid var(--line);
@@ -156,22 +158,22 @@
     transition: opacity .2s; pointer-events: none;
   }
   #toast.show { opacity: 1; }
-  #modal, #c4Modal, #aiModal {
+  #modal, #c4Modal, #aiModal, #presetModal {
     position: fixed; inset: 0; background: rgba(4,8,18,.72);
     display: grid; place-items: center; z-index: 80; padding: 20px;
   }
-  #modal .box, #c4Modal .box, #aiModal .box {
+  #modal .box, #c4Modal .box, #aiModal .box, #presetModal .box {
     width: min(760px, 100%); max-height: 86vh; display: flex; flex-direction: column;
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
   }
-  #modal h3, #c4Modal h3, #aiModal h3 { margin: 0 0 10px; font-size: 15px; }
+  #modal h3, #c4Modal h3, #aiModal h3, #presetModal h3 { margin: 0 0 10px; font-size: 15px; }
   #promptText {
     width: 100%; min-height: 340px; flex: 1;
     background: #0d1428; color: #dbe5ff; border: 1px solid var(--line);
     border-radius: 9px; padding: 12px; font: 12px/1.55 Consolas, "Cascadia Code", monospace;
     resize: vertical;
   }
-  #modal .ma, #c4Modal .ma, #aiModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #modal .ma, #c4Modal .ma, #aiModal .ma, #presetModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   @media (max-width: 1100px) {
     #app { grid-template-columns: 56px 1fr 224px; }
     header .tag { display: none; }
@@ -270,6 +272,7 @@
   }
   @media (max-width: 1100px) {
     #app { grid-template-columns: calc(56px * var(--ui-scale)) 1fr calc(224px * var(--ui-scale)); }
+    header { gap: calc(8px * var(--ui-scale)); padding: 0 calc(10px * var(--ui-scale)); }
   }
   @media (pointer: coarse) {
     .tool {
@@ -316,6 +319,7 @@
     <button class="btn" id="btnFit">Вписать</button>
     <button class="btn" id="btnLoadTop" title="Загрузить схему из JSON">📂 Импорт</button>
     <input type="file" id="fileInput" accept="application/json" class="hidden">
+    <button class="btn" id="btnPresetsTop" title="Пресеты архитектур">🏛 Пресеты</button>
     <button class="btn" id="btnPrompt">📋 Запрос для Qwen</button>
     <button class="btn" id="btnPack" title="PNG + Mermaid + JSON + запрос">⬇ Пакет</button>
     <button class="btn primary" id="btnExport">⬇ Экспорт PNG</button>
@@ -375,18 +379,6 @@
       <div class="hint" id="edgeKindHint" style="margin-top:6px"></div>
       <div class="hint" id="linkStatus" style="margin-top:7px">Связей пока нет</div>
       <button class="btn" id="btnSnapEdges" style="width:100%;margin-top:8px">🔗 Привязать висячие концы</button>
-    </div>
-
-    <div class="sec">
-      <h2>Пресеты архитектур</h2>
-      <div class="hint">13 вариантов: классические (монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless) и современные (модульный монолит, Clean, BFF, стриминг, микрофронтенды, service mesh).</div>
-      <select id="presetSelect" style="margin-top:8px"></select>
-      <div class="hint" id="presetDesc" style="margin-top:7px"></div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn primary" id="presetLoad" style="flex:1">Заменить слой</button>
-        <button class="btn" id="presetAdd" style="flex:1">Добавить</button>
-      </div>
-      <div class="hint">Пресет сразу даёт корректный Mermaid/JSON и проходит C4-валидацию.</div>
     </div>
 
     <div class="sec">
@@ -558,6 +550,21 @@
   </div>
 </div>
 
+<div id="presetModal" class="hidden">
+  <div class="box" style="width:min(560px,100%)">
+    <h3>Пресеты архитектур</h3>
+    <div class="hint">13 вариантов: классические (монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless) и современные (модульный монолит, Clean, BFF, стриминг, микрофронтенды, service mesh).</div>
+    <select id="presetSelect" style="margin-top:10px"></select>
+    <div class="hint" id="presetDesc" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="presetLoad" style="flex:1">Заменить слой</button>
+      <button class="btn" id="presetAdd" style="flex:1">Добавить</button>
+    </div>
+    <div class="hint">Пресет сразу даёт корректный Mermaid/JSON и проходит C4-валидацию.</div>
+    <div class="ma"><button class="btn" id="presetClose">Закрыть</button></div>
+  </div>
+</div>
+
 <div id="aiModal" class="hidden">
   <div class="box">
     <h3>Ответ модели</h3>
@@ -725,14 +732,45 @@
       return copy;
     };
     const main = move(e);
-    // Стрелки заготовки уезжают вместе с блоком, чтобы схема не рвалась.
+    // Связанные стрелки заготовки тоже переезжают в ваш слой: их дальний конец
+    // остаётся привязан к соседнему блоку, а ближний будет тянуться за копией.
     if (e && e.type === 'block') {
       state.template.forEach(t => {
         if (t.type === 'arrow' && !t.hidden && (t.fromLabel === e.label || t.toLabel === e.label)) move(t);
       });
     }
     applyTemplateHidden();
+    // Перепривязываем концы стрелок к копии блока по id, чтобы связь не
+    // потерялась, даже если в схеме есть блок с таким же названием.
+    if (main && e.type === 'block') {
+      state.elements.forEach(a => {
+        if (a.type !== 'arrow') return;
+        ['from', 'to'].forEach(which => {
+          const id = a[which + 'Id'], label = a[which + 'Label'];
+          if ((id && id === e.id) || (!id && label === e.label)) a[which + 'Id'] = main.id;
+        });
+      });
+    }
     return { main, made };
+  }
+  // Стрелки, привязанные к блоку: при перетаскивании конец едет за блоком,
+  // второй конец остаётся на месте — связь тянется, но не рвётся.
+  function collectDragLinks(e) {
+    const links = [];
+    if (!e || e.type !== 'block') return links;
+    state.elements.forEach(a => {
+      if (a.type !== 'arrow') return;
+      const st = edgeStatus(a);
+      ['from', 'to'].forEach(which => {
+        if (st[which] !== e) return;
+        const x = which === 'from' ? a.x1 : a.x2;
+        const y = which === 'from' ? a.y1 : a.y2;
+        links.push({ a, which, dx: x - e.x, dy: y - e.y });
+        a[which + 'Id'] = e.id;
+        a[which + 'Label'] = e.label;
+      });
+    });
+    return links;
   }
 
   let dpr = 1;
@@ -1644,11 +1682,10 @@
       const picked = hit(p, touchMult, true);
       const fromTemplate = !!picked && isTemplateElement(picked);
       if (picked) snapshot();
-      let e = picked, extras = [];
+      let e = picked;
       if (fromTemplate) {
         const detached = detachTemplate(picked);
         e = detached.main;
-        extras = detached.made.filter(x => x !== e).map(a => ({ el: a, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 }));
         $('#status').textContent = 'Из заготовки в ваш слой: ' + detached.made.length + ' эл. — тяните, чтобы переместить';
       }
       state.selected = e;
@@ -1657,7 +1694,7 @@
           mode: 'move', el: e, pointerId: ev.pointerId, px: p.x, py: p.y,
           ox: e.x, oy: e.y, ox1: e.x1, oy1: e.y1, ox2: e.x2, oy2: e.y2,
           pts: e.points ? e.points.map(q => ({ ...q })) : null,
-          extras
+          links: collectDragLinks(e)
         };
         capturePointer(ev);
       }
@@ -1751,9 +1788,9 @@
       if (d.pts) d.el.points = d.pts.map(q => ({ ...q, x: q.x + dx, y: q.y + dy }));
       else if ('x1' in d.el) { d.el.x1 = d.ox1 + dx; d.el.y1 = d.oy1 + dy; d.el.x2 = d.ox2 + dx; d.el.y2 = d.oy2 + dy; }
       else { d.el.x = d.ox + dx; d.el.y = d.oy + dy; }
-      (d.extras || []).forEach(x => {
-        x.el.x1 = x.x1 + dx; x.el.y1 = x.y1 + dy;
-        x.el.x2 = x.x2 + dx; x.el.y2 = x.y2 + dy;
+      (d.links || []).forEach(l => {
+        if (l.which === 'from') { l.a.x1 = d.el.x + l.dx; l.a.y1 = d.el.y + l.dy; }
+        else { l.a.x2 = d.el.x + l.dx; l.a.y2 = d.el.y + l.dy; }
       });
     } else if (d.mode === 'draw') {
       const pr = state.preview;
@@ -2326,6 +2363,10 @@
     return out;
   }
   const presetSel = $('#presetSelect');
+  const closePresets = () => $('#presetModal').classList.add('hidden');
+  $('#btnPresetsTop').addEventListener('click', () => $('#presetModal').classList.remove('hidden'));
+  $('#presetClose').addEventListener('click', closePresets);
+  $('#presetModal').addEventListener('click', ev => { if (ev.target === $('#presetModal')) closePresets(); });
   if (window.ArchPresets && window.ArchPresets.presets.length) {
     window.ArchPresets.presets.forEach(p => {
       const o = document.createElement('option');
@@ -2353,6 +2394,7 @@
       render(); fit();
       $('#status').textContent = 'Пресет «' + p.name + '» загружен';
       toast('Пресет загружен: ' + p.nodes.length + ' блоков, ' + p.edges.length + ' связей');
+      closePresets();
     });
     $('#presetAdd').addEventListener('click', () => {
       const p = window.ArchPresets.get(presetSel.value);
@@ -2364,6 +2406,7 @@
       state.selected = null;
       render(); fit();
       $('#status').textContent = 'Пресет «' + p.name + '» добавлен справа';
+      closePresets();
     });
   } else {
     presetSel.disabled = true;

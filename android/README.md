@@ -22,9 +22,10 @@ android/
 
 ## Готовый APK из GitHub Actions
 
-1. Откройте репозиторий → **Actions** → **Android APK** → **Run workflow**.
+Автоматический выпуск APK приостановлен: workflow больше не запускается на теги и пуш.
+
+1. Откройте репозиторий → **Actions** → **Android APK** → **Run workflow** — сборка запускается только вручную.
 2. Дождитесь сборки и скачайте артефакт `architecture-canvas-apk` (внутри `app-debug.apk` и `app-release-unsigned` с подписью debug-ключом — оба пригодны для side-load).
-3. Либо создайте тег `v1.0.0` и запушьте его: workflow прикрепит APK к GitHub Release.
 
 ## Сборка локально
 

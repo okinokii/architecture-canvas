@@ -1,10 +1,8 @@
 name: Android APK
 
+# Выпуск APK приостановлен: сборка запускается только вручную из вкладки Actions.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
