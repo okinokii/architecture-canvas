@@ -41,7 +41,103 @@ function loadSchema(args) {
   return core.compactSchema(data);
 }
 
+function buildCustomSchema(args) {
+  const spaces = Array.isArray(args && args.spaces) ? args.spaces : [];
+  const cubes = Array.isArray(args && args.cubes) ? args.cubes : [];
+  const links = Array.isArray(args && args.links) ? args.links : [];
+  const zones = spaces.map((s, i) => ({
+    title: String((s && (s.title || s.name)) || ('ПРОСТРАНСТВО ' + (i + 1))),
+    x: Number.isFinite(s && s.x) ? s.x : 60 + (i % 3) * 500,
+    y: Number.isFinite(s && s.y) ? s.y : 80 + Math.floor(i / 3) * 400,
+    w: Number(s && s.w) > 0 ? Number(s.w) : 460,
+    h: Number(s && s.h) > 0 ? Number(s.h) : 340
+  }));
+  const nodes = cubes.map((c, i) => {
+    const raw = String((c && c.id) || '');
+    return {
+      id: /^[A-Za-z][A-Za-z0-9_-]*$/.test(raw) ? raw : 'c' + (i + 1),
+      label: String((c && (c.label || c.name)) || ('Куб ' + (i + 1))),
+      type: String((c && (c.type || c.kind)) || 'service'),
+      description: String((c && (c.description || c.sub)) || ''),
+      zone: String((c && (c.zone || c.space)) || ''),
+      source: 'custom-constructor'
+    };
+  });
+  const refs = id => nodes.some(n => n.id === id) || nodes.some(n => n.label === id);
+  const edges = links.map(l => {
+    const from = String((l && (l.from || l.fromLabel)) || '');
+    const to = String((l && (l.to || l.toLabel)) || '');
+    const kind = core.EDGE_KINDS[l && l.kind] ? l.kind : (l && l.async ? 'async' : 'sync');
+    return {
+      from, fromLabel: from, to, toLabel: to,
+      label: String((l && (l.label || l.note)) || ''),
+      kind, async: core.EDGE_KINDS[kind].async,
+      fromAttached: refs(from), toAttached: refs(to)
+    };
+  });
+  const schema = {
+    version: 1,
+    zones,
+    nodes,
+    edges,
+    notes: Array.isArray(args && args.notes) ? args.notes.map(String) : []
+  };
+  const instruction = String((args && args.instruction) || '').trim();
+  if (instruction) schema.instruction = instruction;
+  return schema;
+}
+
 const TOOLS = [
+  {
+    name: 'build_schema',
+    description: 'Конструктор схемы для запроса к ИИ: собрать кастомные пространства (зоны), кубики (блоки) и связи по спискам, сразу получить JSON, Mermaid, C4-валидацию и готовый промпт. Можно добавить instruction — дополнительную инструкцию заказчика, она попадёт в промпт и в JSON.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaces: {
+          type: 'array',
+          description: 'Пространства/зоны. Каждое: {title, x?, y?, w?, h?}.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
+              w: { type: 'number' }, h: { type: 'number' }
+            },
+            required: ['title']
+          }
+        },
+        cubes: {
+          type: 'array',
+          description: 'Кубики/блоки. Каждый: {id?, label, description?, type?, zone?}. type — service/gateway/db/queue/monitoring/daemon/worker/scheduler/ai и т.д.; zone — название пространства.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' }, label: { type: 'string' }, description: { type: 'string' },
+              type: { type: 'string' }, zone: { type: 'string' }
+            },
+            required: ['label']
+          }
+        },
+        links: {
+          type: 'array',
+          description: 'Связи. Каждая: {from, to, label?, kind?, async?}. from/to — id или название куба; kind — sync/async/data/auth/event/dependency.',
+          items: {
+            type: 'object',
+            properties: {
+              from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string' },
+              kind: { type: 'string', enum: ['sync', 'async', 'data', 'auth', 'event', 'dependency'] },
+              async: { type: 'boolean' }
+            },
+            required: ['from', 'to']
+          }
+        },
+        notes: { type: 'array', items: { type: 'string' }, description: 'Необязательные пояснения/легенда.' },
+        instruction: { type: 'string', description: 'Дополнительная инструкция заказчика для модели.' },
+        variant: { type: 'string', enum: ['combo', 'png', 'mermaid', 'json', 'prose'], default: 'combo' }
+      },
+      required: ['cubes']
+    }
+  },
   {
     name: 'import_project',
     description: 'Импортировать уже созданный проект: проанализировать каталог с кодом (манифесты, модули, зависимости, docker-compose) и вернуть готовую схему Architecture Canvas. Результат содержит schema (nodes/edges/zones/notes), Mermaid, C4-валидацию и список найденных файлов/фреймворков. Схему можно сразу импортировать в доску кнопкой «📂 Импорт» — она понимает формат nodes/edges; либо указать output, чтобы сервер записал JSON сам. Используйте этот инструмент, когда ИИ должна нарисовать схему существующего проекта по его исходникам.',
@@ -168,6 +264,16 @@ function presetById(id) {
 }
 
 const handlers = {
+  build_schema: args => {
+    const schema = buildCustomSchema(args);
+    return {
+      schema: core.compactSchema(schema),
+      mermaid: core.toMermaid(schema),
+      validation: core.validateC4(schema),
+      prompt: core.buildPrompt(schema, (args && args.variant) || 'combo'),
+      hint: 'Готовую schema можно вставить в доску кнопкой «📂 Импорт» — она понимает nodes/edges/zones.'
+    };
+  },
   import_project: args => {
     const { schema, evidence } = projectImport.importProject(args);
     const out = {

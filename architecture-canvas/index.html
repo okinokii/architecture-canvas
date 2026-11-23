@@ -158,15 +158,48 @@
     transition: opacity .2s; pointer-events: none;
   }
   #toast.show { opacity: 1; }
-  #modal, #c4Modal, #aiModal, #presetModal {
+  #modal, #c4Modal, #aiModal, #presetModal, #builderModal {
     position: fixed; inset: 0; background: rgba(4,8,18,.72);
     display: grid; place-items: center; z-index: 80; padding: 20px;
   }
-  #modal .box, #c4Modal .box, #aiModal .box, #presetModal .box {
+  #modal .box, #c4Modal .box, #aiModal .box, #presetModal .box, #builderModal .box {
     width: min(760px, 100%); max-height: 86vh; display: flex; flex-direction: column;
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
   }
-  #modal h3, #c4Modal h3, #aiModal h3, #presetModal h3 { margin: 0 0 10px; font-size: 15px; }
+  #builderModal .box { width: min(980px, 100%); }
+  #modal h3, #c4Modal h3, #aiModal h3, #presetModal h3, #builderModal h3 { margin: 0 0 10px; font-size: 15px; }
+  .builder-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+  .builder-tabs .btn { padding: 6px 11px; font-size: 12px; }
+  .builder-tabs .btn.active { background: #1d2c50; border-color: var(--accent); color: #fff; }
+  .builder-body { overflow: auto; min-height: 260px; }
+  .builder-pane { display: none; }
+  .builder-pane.active { display: block; }
+  .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .builder-form, .builder-list-wrap {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 11px;
+  }
+  .builder-form input, .builder-form select, .builder-form textarea {
+    background: #0d1428; color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 8px; outline: none; width: 100%; margin-bottom: 7px;
+  }
+  .builder-form input:focus, .builder-form select:focus, .builder-form textarea:focus { border-color: var(--accent); }
+  .builder-form input[type=color] { width: 52px; height: 34px; padding: 2px; }
+  .builder-form .btn { margin-right: 6px; }
+  .builder-list { max-height: 230px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .builder-item {
+    display: flex; align-items: center; gap: 8px; justify-content: space-between;
+    background: #0d1428; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 12px;
+  }
+  .builder-item .bi-text { min-width: 0; flex: 1; }
+  .builder-item .bi-main { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .builder-item .bi-sub { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .builder-item .btn { padding: 4px 7px; font-size: 11px; }
+  .builder-empty { color: var(--muted); font-size: 12px; padding: 10px 0; }
+  #builderBrief { min-height: 190px; resize: vertical; font: 12px/1.55 Consolas, monospace; }
+  #builder .ma, #builderModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  @media (max-width: 760px) {
+    .builder-grid { grid-template-columns: 1fr; }
+  }
   #promptText {
     width: 100%; min-height: 340px; flex: 1;
     background: #0d1428; color: #dbe5ff; border: 1px solid var(--line);
@@ -320,6 +353,7 @@
     <button class="btn" id="btnLoadTop" title="Загрузить схему из JSON">📂 Импорт</button>
     <input type="file" id="fileInput" accept="application/json" class="hidden">
     <button class="btn" id="btnPresetsTop" title="Пресеты архитектур">🏛 Пресеты</button>
+    <button class="btn" id="btnBuilderTop" title="Конструктор кубиков, связей и пространств">🧱 Конструктор</button>
     <button class="btn" id="btnPrompt">📋 Запрос для Qwen</button>
     <button class="btn" id="btnPack" title="PNG + Mermaid + JSON + запрос">⬇ Пакет</button>
     <button class="btn primary" id="btnExport">⬇ Экспорт PNG</button>
@@ -373,6 +407,12 @@
       <h2>Примеры блоков и событий</h2>
       <div class="hint">Готовые фрагменты: блоки + подписанные стрелки + легенда. Вставляются в центр экрана, затем их можно двигать и редактировать.</div>
       <div class="palette" id="examplePalette" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h2>Конструктор для ИИ</h2>
+      <div class="hint">Создайте пространства, кубики и связи в форме — они сразу появятся на доске, в JSON/Mermaid и в запросе к модели.</div>
+      <button class="btn" id="btnBuilderSide" style="width:100%;margin-top:8px">🧱 Открыть конструктор</button>
     </div>
 
     <div class="sec">
@@ -576,6 +616,113 @@
     </div>
     <div class="hint">Пресет сразу даёт корректный Mermaid/JSON и проходит C4-валидацию.</div>
     <div class="ma"><button class="btn" id="presetClose">Закрыть</button></div>
+  </div>
+</div>
+
+<div id="builderModal" class="hidden">
+  <div class="box">
+    <h3>Конструктор схемы для запроса к ИИ</h3>
+    <div class="hint">Формы создают настоящие элементы доски: пространства (зоны), кубики (блоки) и связи (стрелки с типом и подписью). Всё сразу попадает в JSON, Mermaid, запрос для Qwen и отправку в модель.</div>
+
+    <div class="builder-tabs" id="builderTabs">
+      <button class="btn active" data-btab="spaces">🗂 Пространства</button>
+      <button class="btn" data-btab="blocks">🧊 Кубики</button>
+      <button class="btn" data-btab="links">🔗 Связи</button>
+      <button class="btn" data-btab="brief">🤖 Инструкция для ИИ</button>
+    </div>
+
+    <div class="builder-body">
+      <section class="builder-pane active" data-bpane="spaces">
+        <div class="builder-grid">
+          <div class="builder-form">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Новое пространство</h2>
+            <input id="spaceTitle" placeholder="Название: ПЛАТЁЖНЫЙ КОНТУР">
+            <div class="row">
+              <label style="min-width:auto;color:var(--muted)">Ширина</label>
+              <input type="number" id="spaceW" value="460" min="180" max="1600">
+              <label style="min-width:auto;color:var(--muted)">Высота</label>
+              <input type="number" id="spaceH" value="340" min="140" max="1200">
+            </div>
+            <button class="btn primary" id="spaceAdd">Добавить пространство</button>
+            <button class="btn hidden" id="spaceUpdate">Обновить</button>
+            <button class="btn" id="spaceCancel">Сбросить</button>
+          </div>
+          <div class="builder-list-wrap">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Пространства на доске</h2>
+            <div class="builder-list" id="spaceList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="builder-pane" data-bpane="blocks">
+        <div class="builder-grid">
+          <div class="builder-form">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Новый куб</h2>
+            <input id="blockIdInput" placeholder="id (необязательно, например order-api)">
+            <input id="blockLabelInput" placeholder="Название: Order API">
+            <input id="blockSubInput" placeholder="Описание / технология: Node.js, PostgreSQL">
+            <div class="row">
+              <select id="blockKindInput" title="Тип куба"></select>
+              <select id="blockZoneInput" title="Пространство"></select>
+            </div>
+            <div class="row">
+              <label style="min-width:auto;color:var(--muted)">Цвет</label>
+              <input type="color" id="blockColorInput" value="#5b8cff">
+              <span class="hint">тип и цвет видны в JSON и в промпте</span>
+            </div>
+            <button class="btn primary" id="blockAdd">Добавить куб</button>
+            <button class="btn hidden" id="blockUpdate">Обновить</button>
+            <button class="btn" id="blockCancel">Сбросить</button>
+          </div>
+          <div class="builder-list-wrap">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Кубики на доске</h2>
+            <div class="builder-list" id="blockList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="builder-pane" data-bpane="links">
+        <div class="builder-grid">
+          <div class="builder-form">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Новая связь</h2>
+            <div class="row">
+              <select id="linkFromInput" title="Откуда"></select>
+              <span class="hint">→</span>
+              <select id="linkToInput" title="Куда"></select>
+            </div>
+            <input id="linkLabelInput" placeholder="Подпись события: order.created">
+            <div class="row">
+              <select id="linkKindInput" title="Тип связи"></select>
+              <label class="check" style="margin:0;white-space:nowrap"><input type="checkbox" id="linkAttached" checked> привязать</label>
+            </div>
+            <button class="btn primary" id="linkAdd">Добавить связь</button>
+            <button class="btn hidden" id="linkUpdate">Обновить</button>
+            <button class="btn" id="linkCancel">Сбросить</button>
+          </div>
+          <div class="builder-list-wrap">
+            <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Связи на доске</h2>
+            <div class="builder-list" id="linkList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="builder-pane" data-bpane="brief">
+        <div class="builder-form">
+          <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:0 0 10px">Дополнительная инструкция заказчика</h2>
+          <textarea id="builderBrief" placeholder="Например: проверь, хватает ли мониторинга и как ведёт себя система при отказе очереди; предложения дай с приоритетами P0/P1/P2."></textarea>
+          <div class="hint">Текст добавляется в конец любого варианта запроса (PNG, Mermaid, JSON, prose, combo), в экспорт JSON и в набор файлов Gist. Хранится только в этом браузере.</div>
+          <div class="hint" id="builderBriefStatus" style="margin-top:6px"></div>
+          <button class="btn" id="briefSave" style="margin-top:8px">💾 Сохранить инструкцию</button>
+          <button class="btn primary" id="briefPrompt">📋 Открыть запрос для ИИ</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="ma">
+      <button class="btn" id="builderValidate">🔎 Проверить схему</button>
+      <button class="btn primary" id="builderPrompt">📋 Запрос для ИИ</button>
+      <button class="btn" id="builderClose">Закрыть</button>
+    </div>
   </div>
 </div>
 
@@ -2089,6 +2236,298 @@
     expal.appendChild(b);
   });
 
+  /* ---------- Конструктор кубиков, связей и пространств для ИИ ---------- */
+  const BUILDER_BRIEF_KEY = 'archcanvas.builder.brief';
+  const bstate = { edit: null };
+  function builderBrief() { return (localStorage.getItem(BUILDER_BRIEF_KEY) || '').trim(); }
+  function setBuilderBrief(text) {
+    const value = String(text || '').trim();
+    if (value) localStorage.setItem(BUILDER_BRIEF_KEY, value);
+    else localStorage.removeItem(BUILDER_BRIEF_KEY);
+    $('#builderBrief').value = value;
+    $('#builderBriefStatus').textContent = value
+      ? 'Сохранено: ' + value.length + ' симв. Добавляется в конец запроса и JSON.'
+      : 'Инструкция не задана — запрос остаётся стандартным.';
+  }
+  function userZones() { return state.elements.filter(e => e.type === 'zone'); }
+  function userBlocks() { return state.elements.filter(e => e.type === 'block'); }
+  function userLinks() { return state.elements.filter(e => e.type === 'arrow'); }
+  function zoneOfBlock(b) {
+    const z = userZones().find(z => b.x >= z.x && b.x <= z.x + z.w && b.y >= z.y && b.y <= z.y + z.h);
+    return z ? z.title : (b.zone || '');
+  }
+  function centerWorld() {
+    const r = canvas.getBoundingClientRect();
+    return toWorld(r.left + r.width / 2, r.top + r.height / 2);
+  }
+  function hideTemplateOnce() {
+    if (state.showTemplate && !state.elements.length) {
+      state.showTemplate = false; $('#showTemplate').checked = false;
+    }
+  }
+  function placeCube(zoneTitle) {
+    const z = userZones().find(z => z.title === zoneTitle);
+    const same = state.elements.filter(e => e.type === 'block' && zoneOfBlock(e) === zoneTitle).length;
+    if (z) {
+      const cols = Math.max(1, Math.floor((z.w - 30) / 210));
+      return {
+        x: z.x + 18 + (same % cols) * 205,
+        y: z.y + 46 + Math.floor(same / cols) * 82
+      };
+    }
+    const c = centerWorld();
+    return { x: c.x - 95 + (same % 3) * 28, y: c.y - 30 + (same % 3) * 28 };
+  }
+  function nextCubeId() {
+    const used = new Set(userBlocks().map(b => b.id));
+    let i = 1;
+    while (used.has('c' + i)) i++;
+    return 'c' + i;
+  }
+  function linkCoords(from, to, label, kind) {
+    const el = exLink(from, to, label, kind);
+    return { x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2, fromLabel: el.fromLabel, toLabel: el.toLabel };
+  }
+  function addBuilderItem(list, main, sub, actions) {
+    const row = document.createElement('div');
+    row.className = 'builder-item';
+    const text = document.createElement('div');
+    text.className = 'bi-text';
+    const a = document.createElement('div'); a.className = 'bi-main'; a.textContent = main;
+    const b = document.createElement('div'); b.className = 'bi-sub'; b.textContent = sub;
+    text.appendChild(a); text.appendChild(b); row.appendChild(text);
+    actions.forEach(([label, fn, primary]) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (primary ? ' primary' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', fn);
+      row.appendChild(btn);
+    });
+    list.appendChild(row);
+  }
+  function emptyList(list, text) {
+    const e = document.createElement('div');
+    e.className = 'builder-empty'; e.textContent = text;
+    list.appendChild(e);
+  }
+  function fillSelect(sel, items, placeholder, current) {
+    sel.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = ''; none.textContent = placeholder;
+    sel.appendChild(none);
+    items.forEach(({ value, label }) => {
+      const o = document.createElement('option');
+      o.value = value; o.label = label;
+      sel.appendChild(o);
+    });
+    if (current != null) sel.value = current;
+  }
+  function resetBuilderForms() {
+    bstate.edit = null;
+    $('#spaceTitle').value = ''; $('#spaceW').value = '460'; $('#spaceH').value = '340';
+    $('#blockIdInput').value = ''; $('#blockLabelInput').value = ''; $('#blockSubInput').value = '';
+    $('#blockColorInput').value = '#5b8cff';
+    $('#linkLabelInput').value = '';
+    $('#spaceUpdate').classList.add('hidden'); $('#blockUpdate').classList.add('hidden'); $('#linkUpdate').classList.add('hidden');
+    $('#spaceAdd').textContent = 'Добавить пространство';
+    $('#blockAdd').textContent = 'Добавить куб';
+    $('#linkAdd').textContent = 'Добавить связь';
+  }
+  function renderBuilder() {
+    const zones = userZones(), blocks = userBlocks(), links = userLinks();
+    const zoneSel = $('#linkFromInput'), zoneSel2 = $('#linkToInput');
+    const zKeep = zoneSel.value, tKeep = zoneSel2.value;
+    const blockOptions = blocks.map(b => ({ value: b.id, label: (b.label || b.id) + ' · ' + b.id }));
+    fillSelect($('#blockZoneInput'), zones.map(z => ({ value: z.title, label: z.title })), 'Без пространства',
+      $('#blockZoneInput').value);
+    fillSelect(zoneSel, blockOptions, 'Откуда — выберите куб', zKeep);
+    fillSelect(zoneSel2, blockOptions, 'Куда — выберите куб', tKeep);
+    $('#blockKindInput').value = $('#blockKindInput').value || 'service';
+    $('#linkKindInput').value = $('#linkKindInput').value || 'sync';
+    $('#builderBrief').value = builderBrief();
+    $('#builderBriefStatus').textContent = builderBrief()
+      ? 'Сохранено: ' + builderBrief().length + ' симв. Добавляется в конец запроса и JSON.'
+      : 'Инструкция не задана — запрос остаётся стандартным.';
+
+    const zl = $('#spaceList'); zl.innerHTML = '';
+    if (!zones.length) emptyList(zl, 'Пространств пока нет — добавьте первое.');
+    zones.forEach(z => {
+      addBuilderItem(zl, z.title, z.w + ' × ' + z.h + ' · ' + state.elements.filter(b => b.type === 'block' && zoneOfBlock(b) === z.title).length + ' куб.', [
+        ['Изменить', () => {
+          resetBuilderForms(); bstate.edit = { type: 'zone', id: z };
+          $('#spaceTitle').value = z.title; $('#spaceW').value = z.w; $('#spaceH').value = z.h;
+          $('#spaceAdd').classList.add('hidden'); $('#spaceUpdate').classList.remove('hidden');
+          switchBuilderTab('spaces'); $('#spaceTitle').focus();
+        }],
+        ['Удалить', () => {
+          if (!confirm('Удалить пространство «' + z.title + '»? Кубики останутся.')) return;
+          snapshot(); state.elements = state.elements.filter(e => e !== z);
+          resetBuilderForms(); render(); renderBuilder(); toast('Пространство удалено');
+        }]
+      ]);
+    });
+
+    const bl = $('#blockList'); bl.innerHTML = '';
+    if (!blocks.length) emptyList(bl, 'Кубиков пока нет — добавьте первый.');
+    blocks.forEach(b => {
+      const sub = [b.id, KINDS[b.kind] ? KINDS[b.kind].label : b.kind, zoneOfBlock(b)].filter(Boolean).join(' · ');
+      addBuilderItem(bl, b.label || '(без названия)', sub, [
+        ['Изменить', () => {
+          resetBuilderForms(); bstate.edit = { type: 'block', id: b };
+          $('#blockIdInput').value = b.id || ''; $('#blockLabelInput').value = b.label || '';
+          $('#blockSubInput').value = b.sub || ''; $('#blockKindInput').value = KINDS[b.kind] ? b.kind : 'service';
+          $('#blockZoneInput').value = zoneOfBlock(b);
+          $('#blockColorInput').value = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#5b8cff';
+          $('#blockAdd').classList.add('hidden'); $('#blockUpdate').classList.remove('hidden');
+          switchBuilderTab('blocks'); $('#blockLabelInput').focus();
+        }],
+        ['Удалить', () => {
+          if (!confirm('Удалить куб «' + (b.label || b.id) + '» и его связи?')) return;
+          snapshot();
+          state.elements = state.elements.filter(e => e !== b && !((e.type === 'arrow') && (e.fromId === b.id || e.toId === b.id)));
+          resetBuilderForms(); render(); renderBuilder(); toast('Куб и его связи удалены');
+        }]
+      ]);
+    });
+
+    const ll = $('#linkList'); ll.innerHTML = '';
+    if (!links.length) emptyList(ll, 'Связей пока нет — добавьте первую.');
+    links.forEach(a => {
+      const k = EDGE_KINDS[edgeKind(a)] || EDGE_KINDS.sync;
+      addBuilderItem(ll, (a.fromLabel || '?') + ' → ' + (a.toLabel || '?'),
+        k.short + (a.note ? ' · ' + a.note : '') + (a.fromId && a.toId ? ' · привязана' : ' · висит'), [
+        ['Изменить', () => {
+          resetBuilderForms(); bstate.edit = { type: 'link', id: a };
+          $('#linkFromInput').value = a.fromId || '';
+          $('#linkToInput').value = a.toId || '';
+          $('#linkLabelInput').value = a.note || '';
+          $('#linkKindInput').value = edgeKind(a);
+          $('#linkAttached').checked = !!(a.fromId && a.toId);
+          $('#linkAdd').classList.add('hidden'); $('#linkUpdate').classList.remove('hidden');
+          switchBuilderTab('links'); $('#linkLabelInput').focus();
+        }],
+        ['Удалить', () => {
+          snapshot(); state.elements = state.elements.filter(e => e !== a);
+          resetBuilderForms(); render(); renderBuilder(); toast('Связь удалена');
+        }]
+      ]);
+    });
+  }
+  function switchBuilderTab(tab) {
+    bstate.tab = tab;
+    document.querySelectorAll('#builderTabs .btn').forEach(b => b.classList.toggle('active', b.dataset.btab === tab));
+    document.querySelectorAll('#builderModal .builder-pane').forEach(p => p.classList.toggle('active', p.dataset.bpane === tab));
+  }
+  function openBuilder() {
+    resetBuilderForms();
+    renderBuilder();
+    $('#builderModal').classList.remove('hidden');
+  }
+  function commitSpace() {
+    const title = $('#spaceTitle').value.trim();
+    if (!title) { toast('Введите название пространства'); return; }
+    const w = Math.max(180, Math.min(1600, +$('#spaceW').value || 460));
+    const h = Math.max(140, Math.min(1200, +$('#spaceH').value || 340));
+    const edit = bstate.edit && bstate.edit.type === 'zone' ? bstate.edit.id : null;
+    snapshot(); hideTemplateOnce();
+    if (edit) { edit.title = title; edit.w = w; edit.h = h; }
+    else {
+      const n = userZones().length;
+      state.elements.push(zone(60 + (n % 3) * 500, 80 + Math.floor(n / 3) * (h + 40), w, h, title));
+    }
+    resetBuilderForms(); render(); renderBuilder(); toast(edit ? 'Пространство обновлено' : 'Пространство добавлено');
+  }
+  function commitCube() {
+    const label = $('#blockLabelInput').value.trim();
+    if (!label) { toast('Введите название куба'); return; }
+    let id = $('#blockIdInput').value.trim();
+    if (!id) id = nextCubeId();
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(id)) { toast('id: латиница, цифры, «-» и «_», начинается с буквы'); return; }
+    const duplicate = userBlocks().find(b => b.id === id && !(bstate.edit && bstate.edit.type === 'block' && bstate.edit.id === b));
+    if (duplicate) { toast('id «' + id + '» уже занят'); return; }
+    const kind = KINDS[$('#blockKindInput').value] ? $('#blockKindInput').value : 'service';
+    const zoneTitle = $('#blockZoneInput').value;
+    const color = /^#[0-9a-f]{6}$/i.test($('#blockColorInput').value) ? $('#blockColorInput').value : KINDS[kind].color;
+    const edit = bstate.edit && bstate.edit.type === 'block' ? bstate.edit.id : null;
+    snapshot(); hideTemplateOnce();
+    const el = edit || block(id, 0, 0, 190, 60, label, '', kind, color);
+    const oldId = edit ? edit.id : null;
+    const oldLabel = edit ? edit.label : null;
+    el.id = id; el.label = label; el.sub = $('#blockSubInput').value.trim();
+    el.kind = kind; el.color = color; el.zone = zoneTitle; el.framed = true; el.shape = 'rect';
+    if (!edit || zoneOfBlock(el) !== zoneTitle) {
+      const p = placeCube(zoneTitle); el.x = p.x; el.y = p.y;
+    }
+    fitTextBlock(el);
+    if (!edit) state.elements.push(el);
+    if (edit) {
+      userLinks().forEach(a => {
+        if (a.fromId === oldId || a.fromLabel === oldLabel) { a.fromId = id; a.fromLabel = label; }
+        if (a.toId === oldId || a.toLabel === oldLabel) { a.toId = id; a.toLabel = label; }
+      });
+    }
+    resetBuilderForms(); render(); renderBuilder(); toast(edit ? 'Куб обновлён' : 'Куб добавлен');
+  }
+  function commitLink() {
+    const fromId = $('#linkFromInput').value, toId = $('#linkToInput').value;
+    if (!fromId || !toId) { toast('Выберите кубы «откуда» и «куда»'); return; }
+    const from = userBlocks().find(b => b.id === fromId), to = userBlocks().find(b => b.id === toId);
+    if (!from || !to) { toast('Кубы для связи не найдены'); return; }
+    const kind = EDGE_KINDS[$('#linkKindInput').value] ? $('#linkKindInput').value : 'sync';
+    const label = $('#linkLabelInput').value.trim();
+    const attached = $('#linkAttached').checked;
+    const edit = bstate.edit && bstate.edit.type === 'link' ? bstate.edit.id : null;
+    const coords = linkCoords(from, to, label, kind);
+    snapshot(); hideTemplateOnce();
+    const el = edit || { type: 'arrow', width: 2, color: '#6f86b8' };
+    Object.assign(el, coords, {
+      kind, note: label, dashed: kindIsAsync(kind),
+      fromId: attached ? from.id : '', toId: attached ? to.id : '',
+      fromLabel: from.label, toLabel: to.label
+    });
+    if (!edit) state.elements.push(el);
+    resetBuilderForms(); render(); renderBuilder(); toast(edit ? 'Связь обновлена' : 'Связь добавлена');
+  }
+
+  Object.entries(KINDS).forEach(([k, v]) => {
+    const o = document.createElement('option');
+    o.value = k; o.textContent = v.label + ' · ' + k;
+    $('#blockKindInput').appendChild(o);
+  });
+  Object.entries(EDGE_KINDS).forEach(([k, v]) => {
+    const o = document.createElement('option');
+    o.value = k; o.textContent = v.label + ' · ' + v.short;
+    $('#linkKindInput').appendChild(o);
+  });
+  $('#btnBuilderTop').addEventListener('click', openBuilder);
+  $('#btnBuilderSide').addEventListener('click', openBuilder);
+  $('#builderClose').addEventListener('click', () => $('#builderModal').classList.add('hidden'));
+  $('#builderModal').addEventListener('click', ev => { if (ev.target === $('#builderModal')) $('#builderModal').classList.add('hidden'); });
+  document.querySelectorAll('#builderTabs .btn').forEach(b => b.addEventListener('click', () => switchBuilderTab(b.dataset.btab)));
+  $('#spaceAdd').addEventListener('click', commitSpace);
+  $('#spaceUpdate').addEventListener('click', commitSpace);
+  $('#spaceCancel').addEventListener('click', resetBuilderForms);
+  $('#blockAdd').addEventListener('click', commitCube);
+  $('#blockUpdate').addEventListener('click', commitCube);
+  $('#blockCancel').addEventListener('click', resetBuilderForms);
+  $('#linkAdd').addEventListener('click', commitLink);
+  $('#linkUpdate').addEventListener('click', commitLink);
+  $('#linkCancel').addEventListener('click', resetBuilderForms);
+  $('#briefSave').addEventListener('click', () => { setBuilderBrief($('#builderBrief').value); toast('Инструкция сохранена'); });
+  $('#briefPrompt').addEventListener('click', () => {
+    setBuilderBrief($('#builderBrief').value);
+    $('#builderModal').classList.add('hidden');
+    $('#btnPrompt').click();
+  });
+  $('#builderPrompt').addEventListener('click', () => {
+    $('#builderModal').classList.add('hidden');
+    $('#btnPrompt').click();
+  });
+  $('#builderValidate').addEventListener('click', () => {
+    $('#builderModal').classList.add('hidden');
+    $('#btnValidate').click();
+  });
+
   $('#widthRange').addEventListener('input', e => { state.width = +e.target.value; $('#widthVal').textContent = state.width; });
   $('#fontRange').addEventListener('input', e => { state.fontSize = +e.target.value; $('#fontVal').textContent = state.fontSize; });
   $('#showTemplate').addEventListener('change', e => { state.showTemplate = e.target.checked; render(); });
@@ -2297,7 +2736,7 @@
   }
 
   function jsonFromGraph(g) {
-    return {
+    const out = {
       version: 1,
       legend: {
         node: 'отдельный компонент системы',
@@ -2321,6 +2760,9 @@
       })),
       notes: g.notes
     };
+    const brief = builderBrief();
+    if (brief) out.instruction = brief;
+    return out;
   }
 
   function proseFromGraph(g) {
@@ -2336,6 +2778,7 @@
       });
     }
     if (g.notes.length) { L.push('', 'Пояснения:'); g.notes.forEach(n => L.push('- ' + n)); }
+    if (builderBrief()) { L.push('', 'Дополнительная инструкция заказчика:', builderBrief()); }
     return L.join('\n');
   }
 
@@ -2362,30 +2805,31 @@
     const mermaid = mermaidFromGraph(g);
     const json = JSON.stringify(jsonFromGraph(g), null, 2);
     const prose = proseFromGraph(g);
+    let text;
     if (variant === 'png') {
-      return [
+      text = [
         'Проанализируй приложенное изображение схемы архитектуры программной системы.',
         '', 'ВНИМАНИЕ: структурированного описания нет — считай изображение единственным источником данных.',
         '', RULES, '', TASK, '',
         'Если подпись или направление стрелки неразличимы, явно напиши «неразличимо» вместо догадки.'
       ].join('\n');
+    } else if (variant === 'mermaid') {
+      text = ['Ниже схема архитектуры в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
+    } else if (variant === 'json') {
+      text = ['Ниже схема архитектуры в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
+    } else if (variant === 'prose') {
+      text = ['Ниже словесное описание схемы архитектуры (источник истины).', '', prose, '', RULES, '', TASK].join('\n');
+    } else {
+      text = [
+        'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
+        'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
+        '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
+        g.notes.length ? '\nПояснения со схемы:\n' + g.notes.map(n => '- ' + n).join('\n') : '',
+        '', RULES, '', TASK
+      ].join('\n');
     }
-    if (variant === 'mermaid') {
-      return ['Ниже схема архитектуры в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
-    }
-    if (variant === 'json') {
-      return ['Ниже схема архитектуры в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
-    }
-    if (variant === 'prose') {
-      return ['Ниже словесное описание схемы архитектуры (источник истины).', '', prose, '', RULES, '', TASK].join('\n');
-    }
-    return [
-      'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
-      'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
-      '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
-      g.notes.length ? '\nПояснения со схемы:\n' + g.notes.map(n => '- ' + n).join('\n') : '',
-      '', RULES, '', TASK
-    ].join('\n');
+    const brief = builderBrief();
+    return brief ? text + '\n\nДОПОЛНИТЕЛЬНАЯ ИНСТРУКЦИЯ ЗАКАЗЧИКА\n' + brief : text;
   }
 
   const FORMATS = [
@@ -2441,7 +2885,7 @@
   });
 
   $('#btnSave').addEventListener('click', () => {
-    const data = { version: 1, elements: state.elements, templateHidden: state.templateHidden, showTemplate: state.showTemplate, view: state.view };
+    const data = { version: 1, elements: state.elements, templateHidden: state.templateHidden, showTemplate: state.showTemplate, view: state.view, instruction: builderBrief() };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     a.download = 'architecture-canvas.json'; a.click();
@@ -2458,6 +2902,7 @@
       snapshot();
       state.elements = fromSchema ? schemaToElements(d) : d.elements;
       state.templateHidden = fromSchema ? [] : (Array.isArray(d.templateHidden) ? d.templateHidden.slice() : []);
+      if (typeof d.instruction === 'string') setBuilderBrief(d.instruction);
       applyTemplateHidden();
       if (fromSchema) {
         state.showTemplate = false; $('#showTemplate').checked = false;
@@ -2872,7 +3317,7 @@
 
   /* Небольшой локальный API: удобно для автотестов и внешних сценариев. */
   window.ArchCanvas = {
-    state, render, currentSchema, collectGraph, edgeStatus, edgeKind,
+    state, render, currentSchema, collectGraph, edgeStatus, edgeKind, buildPrompt, builderBrief,
     validate: () => window.ArchCore ? window.ArchCore.validateC4(currentSchema()) : null
   };
 

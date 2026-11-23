@@ -192,7 +192,7 @@
   }
 
   function compactSchema(schema) {
-    return {
+    const out = {
       version: 1,
       zones: Array.isArray(schema && schema.zones) ? schema.zones : [],
       nodes: (Array.isArray(schema && schema.nodes) ? schema.nodes : []).map(n => ({
@@ -215,6 +215,9 @@
       })),
       notes: Array.isArray(schema && schema.notes) ? schema.notes : []
     };
+    const instruction = String((schema && schema.instruction) || '').trim();
+    if (instruction) out.instruction = instruction;
+    return out;
   }
 
   const RULES = [
@@ -250,6 +253,7 @@
       });
     }
     if (s.notes.length) { L.push('', 'Пояснения:'); s.notes.forEach(n => L.push('- ' + String(n))); }
+    if (s.instruction) { L.push('', 'Дополнительная инструкция заказчика:'); L.push(String(s.instruction)); }
     const report = validateC4(schema);
     if (report.counts.error || report.counts.warning) {
       L.push('', 'Замечания валидации:');
@@ -262,21 +266,30 @@
     const mermaid = toMermaid(schema);
     const json = JSON.stringify(compactSchema(schema), null, 2);
     const notes = (Array.isArray(schema && schema.notes) ? schema.notes : []).map(String);
+    let text;
     if (variant === 'png') {
-      return ['Проанализируй приложенное изображение схемы архитектуры.', '',
+      text = ['Проанализируй приложенное изображение схемы архитектуры.', '',
         'ВНИМАНИЕ: структурированного описания нет — считай изображение единственным источником данных.', '',
         RULES, '', TASK, '', 'Если подпись или направление стрелки неразличимы, напиши «неразличимо» вместо догадки.'].join('\n');
+    } else if (variant === 'mermaid') {
+      text = ['Ниже схема в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
+    } else if (variant === 'json') {
+      text = ['Ниже схема в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
+    } else if (variant === 'prose') {
+      text = ['Ниже словесное описание схемы (источник истины).', '', prose(schema), '', RULES, '', TASK].join('\n');
+    } else {
+      text = [
+        'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
+        'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
+        '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
+        notes.length ? '\nПояснения со схемы:\n' + notes.map(n => '- ' + n).join('\n') : '',
+        '', RULES, '', TASK
+      ].join('\n');
     }
-    if (variant === 'mermaid') return ['Ниже схема в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
-    if (variant === 'json') return ['Ниже схема в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
-    if (variant === 'prose') return ['Ниже словесное описание схемы (источник истины).', '', prose(schema), '', RULES, '', TASK].join('\n');
-    return [
-      'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
-      'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
-      '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
-      notes.length ? '\nПояснения со схемы:\n' + notes.map(n => '- ' + n).join('\n') : '',
-      '', RULES, '', TASK
-    ].join('\n');
+    const instruction = String((schema && schema.instruction) || (compactSchema(schema).instruction) || '').trim();
+    return instruction
+      ? text + '\n\nДОПОЛНИТЕЛЬНАЯ ИНСТРУКЦИЯ ЗАКАЗЧИКА\n' + instruction
+      : text;
   }
 
   function makeGistFiles(schema) {

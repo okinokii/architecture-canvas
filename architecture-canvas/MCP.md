@@ -21,6 +21,7 @@
 
 | Инструмент | Аргументы | Что делает |
 |---|---|---|
+| `build_schema` | `spaces`?, `cubes` (обязательно), `links`?, `notes`?, `instruction`?, `variant`? | **Конструктор схемы для ИИ.** Принимает списки пространств, кубиков и связей, возвращает `schema` (с полем `instruction`), Mermaid, C4-валидацию и готовый промпт. |
 | `import_project` | `path` (обязательно), `output`?, `maxFiles`? | **Импорт готового проекта.** Сканирует каталог с кодом и возвращает схему `nodes/edges/zones/notes`, Mermaid, C4-валидацию и доказательства (список файлов, фреймворков, модулей, сервисов Compose). |
 | `read_schema` | `path` или `schema` | Читает выгруженную с доски схему и возвращает компактный JSON со счётчиками. |
 | `validate_c4` | `path` или `schema` | Мягкая C4-валидация: висячие связи, дубли, петли, противоречия типов, циклы, оторванные блоки. |
@@ -31,6 +32,25 @@
 | `list_presets` | `category`? (`architecture` / `process`) | Список из 29 пресетов с категориями, тегами и счётчиками. |
 | `get_preset` | `id` | Полное описание пресета + JSON-схема + валидация. |
 | `preset_export` | `id`, `format`, `variant` | Экспорт пресета в `schema` / `mermaid` / `prompt` / `gist` / `all`. |
+
+## Как ИИ собирает схему по описанию
+
+Вызвать `build_schema` со списками элементов и инструкцией заказчика:
+
+```json
+{
+  "spaces": [{ "title": "ПЛАТЁЖНЫЙ КОНТУР" }],
+  "cubes": [
+    { "id": "api", "label": "Order API", "description": "Node.js", "type": "service", "zone": "ПЛАТЁЖНЫЙ КОНТУР" },
+    { "id": "bus", "label": "Kafka", "description": "события", "type": "queue", "zone": "ПЛАТЁЖНЫЙ КОНТУР" }
+  ],
+  "links": [{ "from": "api", "to": "bus", "label": "order.created", "kind": "event" }],
+  "notes": ["Заголовок: Кастомная схема", "Легенда: EVT — событие"],
+  "instruction": "Проверь отказоустойчивость и предложи улучшения с приоритетами P0/P1/P2."
+}
+```
+
+Ответ содержит `schema` (поле `instruction` сохраняется), `mermaid`, `validation` и `prompt` с этой инструкцией в конце. Готовую `schema` можно загрузить на доску кнопкой «📂 Импорт».
 
 ## Как ИИ рисует схему существующего проекта
 
@@ -72,6 +92,7 @@
 
 - «Нарисуй архитектуру проекта в `../simple-service` и импортируй её в доску» → `import_project` → записать `output` → открыть `index.html` → «📂 Импорт».
 - «Проверь схему из `architecture-schema.json` перед коммитом» → `validate_c4`.
+- «Собери схему из моих блоков и связей и подготовь запрос к ИИ» → `build_schema` со списками `spaces` / `cubes` / `links` и текстом `instruction`.
 - «Сделай промпт для Qwen по текущему проекту» → `build_ai_prompt` с `variant: "combo"`.
 - «Покажи, как выглядит микросервисная архитектура» → `list_presets` с `category: "architecture"` → `preset_export` с `format: "all"`.
 - «Нарисуй диаграмму: пришло сообщение, обработчик среагировал в CRM, результат ушёл пользователю» → `list_presets` с `category: "process"` → `get_preset` для `flow-message` → `preset_export`. Другие готовые процессы: `flow-webhook`, `flow-saga`, `flow-outbox`, `flow-retry-dlq`, `flow-incident`, `flow-cicd`, `flow-cron`.
