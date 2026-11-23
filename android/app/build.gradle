@@ -36,7 +36,7 @@ android {
 
 // Доска остаётся единственным источником кода: в APK копируем её файлы при сборке.
 tasks.register('copyCanvasAssets', Copy) {
-    from '../architecture-canvas'
+    from new File(rootProject.projectDir, '../architecture-canvas')
     include 'index.html', 'core.js', 'presets.js'
     into 'src/main/assets'
 }
