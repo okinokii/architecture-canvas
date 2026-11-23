@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.okinokii.archcanvas'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.okinokii.archcanvas'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // APK для side-load: подписан отладочным ключом, без Google Play.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+}
+
+// Доска остаётся единственным источником кода: в APK копируем её файлы при сборке.
+tasks.register('copyCanvasAssets', Copy) {
+    from '../architecture-canvas'
+    include 'index.html', 'core.js', 'presets.js'
+    into 'src/main/assets'
+}
+
+tasks.named('preBuild') {
+    dependsOn 'copyCanvasAssets'
+}

@@ -242,6 +242,66 @@
     #app { grid-template-rows: 44px minmax(0,1fr) 54px 26px; }
     .tool { height: 44px; }
   }
+
+  /* ---------- Масштабируемость всего интерфейса ---------- */
+  :root { --ui-scale: 1; }
+  #app {
+    grid-template-columns: calc(64px * var(--ui-scale)) 1fr calc(268px * var(--ui-scale));
+    grid-template-rows: calc(56px * var(--ui-scale)) 1fr calc(34px * var(--ui-scale));
+  }
+  header { padding: 0 calc(16px * var(--ui-scale)); gap: calc(14px * var(--ui-scale)); }
+  header h1 { font-size: calc(15px * var(--ui-scale)); }
+  .btn { padding: calc(7px * var(--ui-scale)) calc(11px * var(--ui-scale)); font-size: calc(14px * var(--ui-scale)); }
+  .editor .ea .btn, .editor .microw .btn { padding: calc(7px * var(--ui-scale)) calc(9px * var(--ui-scale)); }
+  .tool {
+    width: calc(46px * var(--ui-scale)); height: calc(42px * var(--ui-scale));
+    font-size: calc(19px * var(--ui-scale));
+  }
+  #tools { padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale)); gap: calc(6px * var(--ui-scale)); }
+  #side { padding: calc(14px * var(--ui-scale)); }
+  .sec h2 { font-size: calc(11px * var(--ui-scale)); }
+  .hint { font-size: calc(11px * var(--ui-scale)); }
+  .pal { padding: calc(9px * var(--ui-scale)) calc(6px * var(--ui-scale)); font-size: calc(11px * var(--ui-scale)); }
+  .sw { width: calc(25px * var(--ui-scale)); height: calc(25px * var(--ui-scale)); }
+  footer { padding: 0 calc(14px * var(--ui-scale)); font-size: calc(12px * var(--ui-scale)); }
+  #zoomControls .btn {
+    width: calc(44px * var(--ui-scale)); height: calc(44px * var(--ui-scale));
+    font-size: calc(18px * var(--ui-scale));
+  }
+  @media (max-width: 1100px) {
+    #app { grid-template-columns: calc(56px * var(--ui-scale)) 1fr calc(224px * var(--ui-scale)); }
+  }
+  @media (pointer: coarse) {
+    .tool {
+      width: calc(52px * var(--ui-scale)); height: calc(50px * var(--ui-scale));
+      font-size: calc(21px * var(--ui-scale));
+    }
+    .btn { padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale)); }
+    .sw { width: calc(34px * var(--ui-scale)); height: calc(34px * var(--ui-scale)); }
+    .pal { padding: calc(12px * var(--ui-scale)) calc(6px * var(--ui-scale)); font-size: calc(12px * var(--ui-scale)); }
+  }
+  @media (max-width: 900px) {
+    #app {
+      grid-template-rows: calc(52px * var(--ui-scale)) minmax(0,1fr)
+        calc(64px * var(--ui-scale)) calc(30px * var(--ui-scale));
+    }
+    #tools { padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)); gap: calc(6px * var(--ui-scale)); }
+    .tool {
+      flex: 0 0 calc(52px * var(--ui-scale));
+      width: calc(52px * var(--ui-scale)); height: calc(50px * var(--ui-scale));
+    }
+  }
+  /* Большие планшеты вроде Galaxy Tab S8 Ultra */
+  @media (min-width: 1200px) and (pointer: coarse) {
+    #app { grid-template-columns: calc(76px * var(--ui-scale)) 1fr calc(300px * var(--ui-scale)); }
+    #tools { padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale)); }
+    .tool {
+      width: calc(56px * var(--ui-scale)); height: calc(54px * var(--ui-scale));
+      font-size: calc(23px * var(--ui-scale));
+    }
+    .btn { padding: calc(11px * var(--ui-scale)) calc(16px * var(--ui-scale)); }
+    #side { padding: calc(18px * var(--ui-scale)); }
+  }
 </style>
 </head>
 <body>
@@ -302,6 +362,20 @@
         </select>
       </div>
       <div class="hint">Два пальца — всегда масштаб и панорама. S Pen: боковая кнопка — панорама, ластик — удаление, нажим меняет толщину мазка, наклон — его форму.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Масштаб интерфейса</h2>
+      <div class="row" style="margin-bottom:6px">
+        <button class="btn" id="uiScaleMinus" title="Мельче">−</button>
+        <input type="range" id="uiScaleRange" min="0.8" max="1.8" step="0.05" value="1" aria-label="Масштаб интерфейса">
+        <button class="btn" id="uiScalePlus" title="Крупнее">+</button>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <span id="uiScaleVal" style="color:var(--muted);font-size:12px">100%</span>
+        <label class="check" style="margin:0"><input type="checkbox" id="uiAutoScale" checked> Авто под экран</label>
+      </div>
+      <div class="hint">Увеличивает панели, кнопки, шрифты и цель касания, не меняя масштаб самой схемы. На больших сенсорных экранах (Galaxy Tab S8 Ultra) размер подбирается автоматически.</div>
     </div>
 
     <div class="sec">
@@ -606,10 +680,40 @@
   const PALM_KEY = 'archcanvas.palmReject';
   const PRESSURE_KEY = 'archcanvas.penPressure';
   const TOUCH_KEY = 'archcanvas.touchMode';
+  const UI_SCALE_KEY = 'archcanvas.uiScale';
+  const UI_AUTO_SCALE_KEY = 'archcanvas.uiAutoScale';
   let palmReject = lsGet(PALM_KEY, true) !== false;
   let penPressure = lsGet(PRESSURE_KEY, true) !== false;
   let touchMode = lsGet(TOUCH_KEY, 'draw') === 'pan' ? 'pan' : 'draw';
   state.penPressure = penPressure;
+
+  /* Масштаб всего интерфейса (не путать с масштабом схемы) */
+  let uiAutoScale = lsGet(UI_AUTO_SCALE_KEY, true) !== false;
+  const savedUiScale = lsGet(UI_SCALE_KEY, null);
+  function recommendedUiScale() {
+    if (!matchMedia('(pointer: coarse)').matches) return 1;
+    const w = window.innerWidth;
+    if (w >= 1600) return 1.25;
+    if (w >= 1200) return 1.15;
+    if (w >= 900) return 1.1;
+    return 1;
+  }
+  let uiScale = typeof savedUiScale === 'number' && Number.isFinite(savedUiScale)
+    ? savedUiScale : recommendedUiScale();
+  function applyUiScale(value, manual) {
+    uiScale = Math.min(1.8, Math.max(0.8, Math.round(value * 20) / 20));
+    document.documentElement.style.setProperty('--ui-scale', String(uiScale));
+    $('#uiScaleRange').value = uiScale;
+    $('#uiScaleVal').textContent = Math.round(uiScale * 100) + '%';
+    if (manual) {
+      uiAutoScale = false;
+      $('#uiAutoScale').checked = false;
+      lsSet(UI_AUTO_SCALE_KEY, false);
+      lsSet(UI_SCALE_KEY, uiScale);
+    }
+    requestAnimationFrame(resize);
+  }
+  applyUiScale(uiScale, false);
   function currentSnapshot() {
     return {
       savedAt: new Date().toISOString(),
@@ -673,6 +777,9 @@
     render();
   }
   new ResizeObserver(resize).observe(stage);
+  window.addEventListener('resize', () => {
+    if (uiAutoScale) applyUiScale(recommendedUiScale(), false);
+  });
 
   function toast(msg) {
     const t = $('#toast');
@@ -1505,6 +1612,23 @@
   $('#touchMode').addEventListener('change', e => {
     touchMode = e.target.value; lsSet(TOUCH_KEY, touchMode);
     $('#status').textContent = touchMode === 'pan' ? 'Один палец — панорама' : 'Один палец — рисование';
+  });
+  $('#uiAutoScale').checked = uiAutoScale;
+  $('#uiScaleRange').addEventListener('input', e => {
+    applyUiScale(+e.target.value, true);
+    $('#status').textContent = 'Масштаб интерфейса: ' + $('#uiScaleVal').textContent;
+  });
+  function scaleStep(delta) {
+    applyUiScale(uiScale + delta, true);
+    toast('Масштаб интерфейса: ' + $('#uiScaleVal').textContent);
+  }
+  $('#uiScaleMinus').addEventListener('click', () => scaleStep(-0.05));
+  $('#uiScalePlus').addEventListener('click', () => scaleStep(0.05));
+  $('#uiAutoScale').addEventListener('change', e => {
+    uiAutoScale = e.target.checked;
+    lsSet(UI_AUTO_SCALE_KEY, uiAutoScale);
+    if (uiAutoScale) applyUiScale(recommendedUiScale(), false);
+    toast(uiAutoScale ? 'Размер интерфейса подстраивается под экран' : 'Размер интерфейса фиксирован');
   });
   function setSide(open) {
     $('#side').classList.toggle('open', open);

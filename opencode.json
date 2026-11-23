@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "architecture-canvas": {
+        "type": "local",
+        "command": ["node", "architecture-canvas/mcp-server.js"]
+      }
+    }
+  }
+}

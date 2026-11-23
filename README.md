@@ -10,7 +10,7 @@
 - **Сквозной тест**: по нарисованной схеме реализации `simple-service`, а по пресетам — три сервиса в `preset-services`.
 - **Интеграции**: GitHub Gist, OpenAI-совместимый AI API, MCP-сервер с 9 инструментами.
 - **Диктовка**: Web Speech API, 18 языков, кнопки в редакторе блока и горячие клавиши.
-- **Планшеты и S Pen**: адаптивная раскладка, жесты двумя пальцами, palm rejection, нажим и наклон пера, боковая кнопка и ластик S Pen.
+- **Планшеты и S Pen**: адаптивная раскладка, масштабируемый интерфейс (80–180 %, авто под экран), жесты двумя пальцами, palm rejection, нажим и наклон пера, боковая кнопка и ластик S Pen. Готов APK для Galaxy Tab S8 Ultra.
 
 ## Структура
 
@@ -23,8 +23,12 @@
 │   ├── mcp-server.js        # MCP-сервер на stdio JSON-RPC
 │   └── mcp-config.example.json
 ├── simple-service/          # Item API по нарисованной вручную схеме
+├── android/                 # WebView-обёртка для APK (сборка в GitHub Actions)
+│   └── app/src/main/        # MainActivity, Manifest, ресурсы
 ├── preset-services/         # layered-monolith, event-driven, cqrs
 ├── reports/                 # сравнение с аналогами на GitHub
+├── opencode.json            # подключение MCP-сервера к OpenCode
+├── .opencode/commands/      # команда /architecture-canvas
 └── README.md
 ```
 
@@ -41,6 +45,25 @@ python -m http.server 8080
 Горячие клавиши: `V` выбор · `P` карандаш · `L` линия · `A` стрелка · `R` прямоугольник · `E` эллипс · `T` текст · `N` заметка · `F` фигура · `H`/пробел панорама · `D` ластик · `Ctrl+Z`/`Ctrl+Y` · `Ctrl+S` PNG · `Ctrl+M` диктовать название · `Ctrl+Shift+M` описание.
 
 Подробности — в [`architecture-canvas/README.md`](architecture-canvas/README.md).
+
+## Масштаб интерфейса
+
+В разделе **«Масштаб интерфейса»** правой панели: ползунок и кнопки `−/+` меняют размер панелей, кнопок, шрифтов и целей касания в диапазоне **80–180 %**. Это не меняет масштаб схемы. Чекбокс **«Авто под экран»** включён по умолчанию: на сенсорных экранах ≥1200 px размер автоматически увеличивается (Galaxy Tab S8 Ultra — 125 %), а ручная настройка сохраняется в `localStorage` (`archcanvas.uiScale`, `archcanvas.uiAutoScale`).
+
+## APK для Android-планшета
+
+Папка [`android/`](android) содержит минимальный WebView-проект без npm-зависимостей. При сборке файлы доски копируются из `architecture-canvas/`, поэтому исходник остаётся один.
+
+- **Готовый APK**: откройте вкладку **Actions → Android APK → Run workflow**, после сборки скачайте артефакт `architecture-canvas-apk`. Если запустить workflow по тегу `v*`, APK также прикрепится к GitHub Release.
+- **Локальная сборка**: нужны JDK 17, Android SDK (platform 35, build-tools 35.0.0) и Gradle 8.11+: `gradle -p android assembleDebug`. APK появится в `android/app/build/outputs/apk/debug/`.
+- **Установка**: `adb install android/app/build/outputs/apk/debug/app-debug.apk` или просто откройте APK на планшете. Приложение полноэкранное, использует `file:///android_asset/index.html`, автосохранение работает в WebView.
+- S Pen, жесты и масштаб интерфейса в APK работают так же, как в браузере; диктовка зависит от движка WebView и может быть недоступна — используйте Chrome/Edge для неё.
+
+Подробнее — [`android/README.md`](android/README.md).
+
+## Расширение для OpenCode
+
+В корне лежит [`opencode.json`](opencode.json): он подключает тот же MCP-сервер как локальный MCP `architecture-canvas` (9 инструментов). Дополнительно доступна команда **`/architecture-canvas`** ([`.opencode/commands/architecture-canvas.md`](.opencode/commands/architecture-canvas.md)) — она объясняет агенту, как работать с пресетами, схемой и экспортом. Конфигурация подхватывается автоматически, без установки пакетов.
 
 ## Пресеты и реализации
 

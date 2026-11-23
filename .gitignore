@@ -10,3 +10,10 @@ research_notes/
 Thumbs.db
 *.log
 node_modules/
+
+# Android-сборка (APK генерируется в CI)
+android/.gradle/
+android/local.properties
+android/app/build/
+android/app/src/main/assets/
+*.apk
