@@ -417,12 +417,7 @@
 
     <div class="sec">
       <h2>Связи блоков</h2>
-      <div class="hint">Новая стрелка прилипает к ближайшему блоку. Зелёная галочка — оба конца привязаны, красный крестик — связь висит в воздухе. Двойной клик по стрелке меняет подпись и тип.</div>
-      <div class="row" style="margin-top:8px">
-        <label style="min-width:auto;color:var(--muted)">Тип связи</label>
-        <select id="edgeKind"></select>
-      </div>
-      <div class="hint" id="edgeKindHint" style="margin-top:6px"></div>
+      <div class="hint">Новая стрелка прилипает к ближайшему блоку. Зелёная галочка — оба конца привязаны, красный крестик — связь висит в воздухе. Тип связи задаётся в самой стрелке: редактор открывается сразу после рисования, потом его можно вызвать двойным кликом по стрелке.</div>
       <div class="hint" id="linkStatus" style="margin-top:7px">Связей пока нет</div>
       <button class="btn" id="btnSnapEdges" style="width:100%;margin-top:8px">🔗 Привязать висячие концы</button>
     </div>
@@ -560,6 +555,13 @@
   <input id="editorSub" class="hidden" placeholder="Описание (необязательно)" style="width:100%;margin-bottom:7px;background:#0d1428;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px;outline:none">
   <textarea id="editorInput" placeholder="Название блока / текст"></textarea>
   <select id="editorKind" class="hidden" title="Тип связи" style="margin-top:7px"></select>
+  <div class="row hidden" id="editorSizeRow" style="margin-top:7px;margin-bottom:0">
+    <label style="min-width:auto;color:var(--muted)">Размер блока</label>
+    <input id="editorW" type="number" min="70" max="600" step="10" title="Ширина" style="width:70px">
+    <span class="hint">×</span>
+    <input id="editorH" type="number" min="36" max="260" step="10" title="Высота" style="width:70px">
+    <span class="hint" style="font-size:10px">Ш × В, пусто — авто</span>
+  </div>
   <div class="microw">
     <select id="dictationLang" title="Язык диктовки"></select>
     <button class="btn" id="micTitle" title="Диктовать название (Ctrl+M)">🎤 Название</button>
@@ -664,6 +666,12 @@
             <div class="row">
               <select id="blockKindInput" title="Тип куба"></select>
               <select id="blockZoneInput" title="Пространство"></select>
+            </div>
+            <div class="row">
+              <label style="min-width:auto;color:var(--muted)">Размер</label>
+              <input id="blockWInput" type="number" min="70" max="600" step="10" placeholder="ширина" title="Ширина в пикселях">
+              <input id="blockHInput" type="number" min="36" max="260" step="10" placeholder="высота" title="Высота в пикселях">
+              <span class="hint" style="white-space:nowrap">Ш × В, пусто — авто</span>
             </div>
             <div class="row">
               <label style="min-width:auto;color:var(--muted)">Цвет</label>
@@ -954,31 +962,15 @@
   const VERSIONS_KEY = 'archcanvas.versions.v1';
   const EDGE_KIND_KEY = 'archcanvas.edgeKind';
   const savedEdgeKind = localStorage.getItem(EDGE_KIND_KEY);
+  // Тип хранится в каждой стрелке; это только начальное значение редактора новой связи.
   let currentEdgeKind = EDGE_KINDS[savedEdgeKind] ? savedEdgeKind : 'sync';
 
   Object.keys(EDGE_KINDS).forEach(kind => {
-    [$('#edgeKind'), $('#editorKind')].forEach(sel => {
-      if (!sel) return;
-      const o = document.createElement('option');
-      o.value = kind;
-      o.textContent = EDGE_KINDS[kind].label + ' · ' + EDGE_KINDS[kind].short;
-      sel.appendChild(o);
-    });
+    const o = document.createElement('option');
+    o.value = kind;
+    o.textContent = EDGE_KINDS[kind].label + ' · ' + EDGE_KINDS[kind].short;
+    $('#editorKind').appendChild(o);
   });
-  function updateEdgeKindHint() {
-    const info = EDGE_KINDS[currentEdgeKind];
-    $('#edgeKindHint').textContent = info
-      ? 'Обозначение: ' + info.short + ' · ' + info.label + (info.async ? ' (пунктир, асинхронно)' : '')
-      : '';
-  }
-  $('#edgeKind').value = currentEdgeKind;
-  $('#edgeKind').addEventListener('change', e => {
-    currentEdgeKind = EDGE_KINDS[e.target.value] ? e.target.value : 'sync';
-    localStorage.setItem(EDGE_KIND_KEY, currentEdgeKind);
-    updateEdgeKindHint();
-    $('#status').textContent = 'Тип новой связи: ' + EDGE_KINDS[currentEdgeKind].label;
-  });
-  updateEdgeKindHint();
 
   function lsGet(key, fallback) {
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
@@ -1148,16 +1140,28 @@
   }
 
   function fitTextBlock(e) {
+    // Ручной размер, заданный в редакторе/конструкторе, не пересчитываем по тексту.
+    if (e.manualSize && Number.isFinite(e.w) && Number.isFinite(e.h)) return;
     ctx.save();
     ctx.font = '600 14px Segoe UI, sans-serif';
     const lw = ctx.measureText(e.label || '').width;
     ctx.font = '11px Segoe UI, sans-serif';
     const sw = ctx.measureText(e.sub || '').width;
-    ctx.restore();
     const framed = e.framed !== false; // старые сохранённые блоки остаются рамчатыми
     const pad = framed ? (e.shape === 'ellipse' ? 32 : 26) : 5;
-    e.w = Math.max(framed ? 110 : 24, Math.ceil(Math.max(lw, sw)) + pad * 2);
-    e.h = framed ? (e.sub ? 64 : 44) : (e.sub ? 36 : 22);
+    // Ограничиваем ширину: длинные подписи переносятся, а не растягивают блок.
+    const w = Math.min(framed ? 210 : 260,
+      Math.max(framed ? 110 : 24, Math.ceil(Math.max(lw, sw)) + pad * 2));
+    const inner = Math.max(30, w - pad * 2);
+    ctx.font = '600 14px Segoe UI, sans-serif';
+    const labelLines = Math.min(2, Math.max(1, wrapText(ctx, e.label || '', inner).length));
+    ctx.font = '11px Segoe UI, sans-serif';
+    const subLines = e.sub ? Math.min(2, wrapText(ctx, e.sub, inner).length) : 0;
+    ctx.restore();
+    e.w = w;
+    e.h = framed
+      ? Math.max(e.sub ? 64 : 44, 16 + labelLines * 16 + (subLines ? 4 + subLines * 14 : 0))
+      : Math.max(e.sub ? 36 : 22, 8 + labelLines * 14 + (subLines ? 2 + subLines * 13 : 0));
   }
 
   function drawBlock(c, e, selected) {
@@ -1582,18 +1586,26 @@
 
   function openEditor(clientX, clientY, initial, multiline, cb, opts = {}) {
     const ed = $('#editor'), inp = $('#editorInput'), sub = $('#editorSub'), kindSel = $('#editorKind');
-    state.editor = { cb, multiline, withSub: !!opts.withSub };
+    const sizeRow = $('#editorSizeRow');
+    state.editor = { cb, multiline, withSub: !!opts.withSub, withSize: !!opts.size };
     inp.value = initial || '';
     inp.style.minHeight = multiline ? '90px' : '42px';
     sub.value = opts.sub || '';
     sub.classList.toggle('hidden', !opts.withSub);
     kindSel.classList.toggle('hidden', !opts.kind);
     if (opts.kind) kindSel.value = EDGE_KINDS[opts.kind] ? opts.kind : 'sync';
+    sizeRow.classList.toggle('hidden', !opts.size);
+    if (opts.size) {
+      // Для нового блока поля пустые: размер подберётся по тексту, пока пользователь не задаст его сам.
+      $('#editorW').value = opts.size.blank ? '' : Math.round(opts.size.w);
+      $('#editorH').value = opts.size.blank ? '' : Math.round(opts.size.h);
+    }
     ed.classList.remove('hidden');
     dictStatus('');
     updateDictUI();
     const left = Math.min(window.innerWidth - 340, Math.max(10, clientX + 10));
-    const top = Math.min(window.innerHeight - (opts.withSub ? 200 : 160), Math.max(10, clientY + 10));
+    const extra = (opts.withSub ? 52 : 0) + (opts.size ? 46 : 0);
+    const top = Math.min(window.innerHeight - (160 + extra), Math.max(10, clientY + 10));
     ed.style.left = left + 'px'; ed.style.top = top + 'px';
     (opts.withSub ? sub : inp).focus();
     if (!opts.withSub) inp.select();
@@ -1603,7 +1615,7 @@
     if (!e) return;
     stopDictation();
     ed.classList.add('hidden'); state.editor = null;
-    if (commit) e.cb($('#editorInput').value.trim(), $('#editorSub').value.trim(), $('#editorKind').value);
+    if (commit) e.cb($('#editorInput').value.trim(), $('#editorSub').value.trim(), $('#editorKind').value, $('#editorW').value, $('#editorH').value);
   }
 
   /* ---------- Диктовка в поля редактора (Web Speech API) ---------- */
@@ -1737,21 +1749,23 @@
 
   function placeBlock(kind, p) {
     const k = KINDS[kind];
-    const el = { type: 'block', id: 'u' + (++state.blockSeq), x: p.x - 60, y: p.y - 14, w: 120, h: 22, label: k.label, sub: '', kind, color: k.color, framed: false, shape: 'rect' };
+    const el = { type: 'block', id: 'u' + (++state.blockSeq), x: p.x - 60, y: p.y - 14, w: 120, h: 44, label: k.label, sub: '', kind, color: k.color, framed: true, shape: 'rect' };
     fitTextBlock(el);
     openEditor(canvas.getBoundingClientRect().left + state.view.x + el.x * state.view.scale,
                canvas.getBoundingClientRect().top + state.view.y + el.y * state.view.scale,
                k.label, false,
-               (v, sub) => {
+               (v, sub, kind, w, h) => {
                  // Отмена (или пустое название) — блок на схему не попадает.
                  if (!v) return;
                  snapshot();
-                 el.label = v; el.sub = sub; fitTextBlock(el);
+                 el.label = v; el.sub = sub;
+                 delete el.manualSize; fitTextBlock(el);
+                 applyBlockSize(el, w, h);
                  state.elements.push(el); state.selected = el; render();
                  setTool('select');
                  toast('Блок добавлен');
                },
-               { withSub: true, sub: '' });
+               { withSub: true, sub: '', size: { w: el.w, h: el.h, blank: true } });
   }
 
   function capturePointer(ev) {
@@ -1985,6 +1999,7 @@
   });
 
   function finishPointer(ev) {
+    let newArrow = null;
     state.pointers.delete(ev.pointerId);
     if (ev.pointerType === 'pen') {
       state.penDown = false;
@@ -2008,6 +2023,7 @@
             if (!st.fromAttached && st.to) snapEndpoint(pr, 'from', 34 / state.view.scale, st.to);
           }
           state.elements.push(pr);
+          if (pr.type === 'arrow' && !state.gestureLock) newArrow = pr;
         } else state.history.pop();
         state.preview = null;
       }
@@ -2015,9 +2031,35 @@
     }
     if (!state.pointers.size) state.gestureLock = false;
     render();
+    // Тип и подпись задаются в самой новой связи, а не в общих настройках.
+    if (newArrow) editArrow(newArrow, ev.clientX, ev.clientY, false);
   }
   canvas.addEventListener('pointerup', finishPointer);
   canvas.addEventListener('pointercancel', finishPointer);
+
+  function applyBlockSize(e, w, h) {
+    const cw = +w, ch = +h;
+    if (Number.isFinite(cw) && Number.isFinite(ch) && cw >= 70 && ch >= 36) {
+      e.w = Math.min(600, cw); e.h = Math.min(260, ch); e.manualSize = true;
+    } else {
+      delete e.manualSize; fitTextBlock(e);
+    }
+  }
+  function editArrow(a, clientX, clientY, withSnapshot = true) {
+    if (withSnapshot) snapshot();
+    openEditor(clientX, clientY, a.note || '', false, (v, sub, kind) => {
+      a.note = v;
+      if (EDGE_KINDS[kind]) {
+        a.kind = kind; a.dashed = kindIsAsync(kind);
+        currentEdgeKind = kind; localStorage.setItem(EDGE_KIND_KEY, kind);
+      }
+      const from = endpointRef(a, 'from'), to = endpointRef(a, 'to');
+      if (from) { a.fromId = from.id; a.fromLabel = from.label; }
+      if (to) { a.toId = to.id; a.toLabel = to.label; }
+      render();
+      toast('Связь: ' + EDGE_KINDS[edgeKind(a)].label);
+    }, { kind: edgeKind(a) });
+  }
 
   canvas.addEventListener('dblclick', ev => {
     const e = hit(toWorld(ev.clientX, ev.clientY));
@@ -2025,8 +2067,13 @@
     if (e.type === 'block') {
       snapshot();
       openEditor(ev.clientX, ev.clientY, e.label, false,
-        (v, sub) => { if (v) e.label = v; e.sub = sub; fitTextBlock(e); render(); },
-        { withSub: true, sub: e.sub || '' });
+        (v, sub, kind, w, h) => {
+          if (v) e.label = v;
+          e.sub = sub;
+          applyBlockSize(e, w, h);
+          render();
+        },
+        { withSub: true, sub: e.sub || '', size: { w: e.w, h: e.h } });
     } else if (e.type === 'note' || e.type === 'text') {
       snapshot();
       openEditor(ev.clientX, ev.clientY, e.text || '', true, v => {
@@ -2035,13 +2082,7 @@
         render();
       });
     } else if (e.type === 'arrow') {
-      snapshot();
-      openEditor(ev.clientX, ev.clientY, e.note || '', false, (v, sub, kind) => {
-        e.note = v;
-        if (EDGE_KINDS[kind]) { e.kind = kind; e.dashed = kindIsAsync(kind); }
-        render();
-        toast('Связь: ' + EDGE_KINDS[edgeKind(e)].label);
-      }, { kind: edgeKind(e) });
+      editArrow(e, ev.clientX, ev.clientY);
     }
   });
 
@@ -2326,12 +2367,22 @@
     bstate.edit = null;
     $('#spaceTitle').value = ''; $('#spaceW').value = '460'; $('#spaceH').value = '340';
     $('#blockIdInput').value = ''; $('#blockLabelInput').value = ''; $('#blockSubInput').value = '';
+    $('#blockWInput').value = ''; $('#blockHInput').value = '';
     $('#blockColorInput').value = '#5b8cff';
     $('#linkLabelInput').value = '';
     $('#spaceUpdate').classList.add('hidden'); $('#blockUpdate').classList.add('hidden'); $('#linkUpdate').classList.add('hidden');
     $('#spaceAdd').textContent = 'Добавить пространство';
     $('#blockAdd').textContent = 'Добавить куб';
     $('#linkAdd').textContent = 'Добавить связь';
+  }
+  function resizeBuilderBlock(b, delta) {
+    snapshot();
+    delete b.manualSize;
+    b.w = Math.max(70, Math.min(600, Math.round(b.w) + delta));
+    b.h = Math.max(36, Math.min(260, Math.round(b.h) + Math.round(delta * 0.45)));
+    b.manualSize = true;
+    render(); renderBuilder();
+    toast('Размер куба: ' + b.w + ' × ' + b.h);
   }
   function renderBuilder() {
     const zones = userZones(), blocks = userBlocks(), links = userLinks();
@@ -2370,12 +2421,17 @@
     const bl = $('#blockList'); bl.innerHTML = '';
     if (!blocks.length) emptyList(bl, 'Кубиков пока нет — добавьте первый.');
     blocks.forEach(b => {
-      const sub = [b.id, KINDS[b.kind] ? KINDS[b.kind].label : b.kind, zoneOfBlock(b)].filter(Boolean).join(' · ');
+      const sub = [b.id, KINDS[b.kind] ? KINDS[b.kind].label : b.kind, zoneOfBlock(b),
+        Math.round(b.w) + '×' + Math.round(b.h)].filter(Boolean).join(' · ');
       addBuilderItem(bl, b.label || '(без названия)', sub, [
+        ['－', () => resizeBuilderBlock(b, -24)],
+        ['＋', () => resizeBuilderBlock(b, 24)],
         ['Изменить', () => {
           resetBuilderForms(); bstate.edit = { type: 'block', id: b };
           $('#blockIdInput').value = b.id || ''; $('#blockLabelInput').value = b.label || '';
           $('#blockSubInput').value = b.sub || ''; $('#blockKindInput').value = KINDS[b.kind] ? b.kind : 'service';
+          $('#blockWInput').value = b.manualSize ? Math.round(b.w) : '';
+          $('#blockHInput').value = b.manualSize ? Math.round(b.h) : '';
           $('#blockZoneInput').value = zoneOfBlock(b);
           $('#blockColorInput').value = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#5b8cff';
           $('#blockAdd').classList.add('hidden'); $('#blockUpdate').classList.remove('hidden');
@@ -2458,7 +2514,9 @@
     if (!edit || zoneOfBlock(el) !== zoneTitle) {
       const p = placeCube(zoneTitle); el.x = p.x; el.y = p.y;
     }
+    delete el.manualSize;
     fitTextBlock(el);
+    applyBlockSize(el, $('#blockWInput').value, $('#blockHInput').value);
     if (!edit) state.elements.push(el);
     if (edit) {
       userLinks().forEach(a => {
