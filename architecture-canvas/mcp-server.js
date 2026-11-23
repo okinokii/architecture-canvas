@@ -129,8 +129,13 @@ const TOOLS = [
 const PRESET_TOOLS = [
   {
     name: 'list_presets',
-    description: 'Список классических архитектурных пресетов: слоистый монолит, MVC, микросервисы, EDA, CQRS, гексагональная, serverless.',
-    inputSchema: { type: 'object', properties: {} }
+    description: 'Список пресетов (29) в двух категориях: architecture — архитектурные шаблоны, process — логические/событийные диаграммы процессов (сообщение → реакция → результат, Saga, outbox, retry/DLQ, инциденты, CI/CD, cron). Можно отфильтровать по category.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['architecture', 'process'], description: 'Необязательный фильтр категории' }
+      }
+    }
   },
   {
     name: 'get_preset',
@@ -178,12 +183,18 @@ const handlers = {
     }
     return out;
   },
-  list_presets: () => ({
-    presets: presets.presets.map(p => ({
-      id: p.id, name: p.name, description: p.description, tags: p.tags,
-      nodes: p.nodes.length, edges: p.edges.length, zones: p.zones.length
-    }))
-  }),
+  list_presets: args => {
+    const category = args && args.category;
+    const list = presets.presets.filter(p => !category || p.category === category);
+    return {
+      total: list.length,
+      presets: list.map(p => ({
+        id: p.id, name: p.name, description: p.description,
+        category: p.category || 'architecture', tags: p.tags,
+        nodes: p.nodes.length, edges: p.edges.length, zones: p.zones.length
+      }))
+    };
+  },
   get_preset: args => {
     const p = presetById(args && args.id);
     return { preset: p, schema: presets.toSchema(p), validation: core.validateC4(presets.toSchema(p)) };

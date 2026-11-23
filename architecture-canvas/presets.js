@@ -8,7 +8,10 @@
 
   const COLORS = {
     client: '#29c7a3', gateway: '#38bdf8', service: '#5b8cff', db: '#c084fc',
-    cache: '#ffb454', queue: '#f472b6', storage: '#a3e635', external: '#94a3b8'
+    cache: '#ffb454', queue: '#f472b6', storage: '#a3e635', external: '#94a3b8',
+    monitoring: '#22d3ee', daemon: '#a3e635', worker: '#fb923c', scheduler: '#facc15',
+    balancer: '#60a5fa', auth: '#e879f9', analytics: '#34d399', ci: '#818cf8',
+    config: '#94a3b8', firewall: '#f87171', ai: '#f0abfc', vector: '#c084fc'
   };
 
   const n = (key, label, sub, kind, x, y, w, h, zone) =>
@@ -454,8 +457,523 @@
       notes: [
         note('Сервисы не доверяют сети: идентичность выдаётся IAM, трафик подписывается mTLS.', 1080, 560, 260, 70)
       ]
+    },
+
+    /* ---------- Дополнительные архитектурные практики ---------- */
+    {
+      id: 'data-lake',
+      name: 'Data Lake / Лямбда-архитектура',
+      description: 'Сырые события идут и в потоковую обработку, и в архив; batch пересчитывает историю, stream даёт свежие метрики.',
+      tags: ['data', 'streaming', 'analytics', 'lake'],
+      zones: [z('ИСТОЧНИКИ', 40, 80, 220, 600), z('STREAM', 300, 80, 260, 600), z('BATCH', 600, 80, 260, 600), z('ПОТРЕБЛЕНИЕ', 900, 80, 300, 600)],
+      nodes: [
+        n('events', 'События / логи', 'клики, треки', 'client', 70, 260, 180, 60, 'ИСТОЧНИКИ'),
+        n('kafka', 'Kafka', 'raw events', 'queue', 330, 200, 200, 60, 'STREAM'),
+        n('flink', 'Flink / Streaming', 'окна, агрегаты', 'worker', 330, 390, 200, 60, 'STREAM'),
+        n('lake', 'S3 / Data Lake', 'сырые parquet', 'storage', 630, 200, 200, 60, 'BATCH'),
+        n('spark', 'Spark Batch', 'пересчёт витрин', 'worker', 630, 390, 200, 60, 'BATCH'),
+        n('olap', 'ClickHouse / OLAP', 'витрины и срезы', 'analytics', 930, 260, 220, 60, 'ПОТРЕБЛЕНИЕ'),
+        n('bi', 'BI / Дашборды', 'отчёты, метрики', 'client', 930, 450, 220, 60, 'ПОТРЕБЛЕНИЕ')
+      ],
+      edges: [
+        e('events', 'kafka', 'events', true, 'event'),
+        e('events', 'lake', 'архив', false, 'data'),
+        e('kafka', 'flink', 'consume', true, 'event'),
+        e('flink', 'olap', 'real-time метрики', false, 'data'),
+        e('lake', 'spark', 'parquet', false, 'data'),
+        e('spark', 'olap', 'витрины', false, 'data'),
+        e('olap', 'bi', 'SQL', false, 'sync')
+      ],
+      notes: [
+        note('Заголовок: Data Lake — лямбда-архитектура (stream + batch).', 900, 560, 300, 50),
+        note('Легенда: EVT — события, DATA — данные, SYNC — запрос.', 900, 620, 300, 44),
+        note('Batch пересчитывает историю, stream даёт свежие метрики.', 70, 540, 250, 60)
+      ]
+    },
+    {
+      id: 'ml-serving',
+      name: 'ML-сервинг и Feature Store',
+      description: 'Обучение и инференс разделены: признаки из одного источника, модель в registry, онлайн-предсказания и контроль дрейфа.',
+      tags: ['ml', 'ai', 'data', 'serving'],
+      zones: [z('ДАННЫЕ', 40, 80, 230, 600), z('ОБУЧЕНИЕ', 310, 80, 250, 600), z('СЕРВИНГ', 600, 80, 280, 600), z('НАБЛЮДЕНИЕ', 920, 80, 280, 600)],
+      nodes: [
+        n('raw', 'Сырые данные', 'события, БД', 'db', 70, 230, 190, 60, 'ДАННЫЕ'),
+        n('features', 'Feature Store', 'онлайн + офлайн', 'storage', 70, 410, 190, 60, 'ДАННЫЕ'),
+        n('trainer', 'Training Job', 'пайплайн обучения', 'worker', 340, 230, 190, 60, 'ОБУЧЕНИЕ'),
+        n('registry', 'Model Registry', 'версии модели', 'config', 340, 410, 190, 60, 'ОБУЧЕНИЕ'),
+        n('api', 'Inference API', 'REST / gRPC', 'gateway', 630, 240, 200, 60, 'СЕРВИНГ'),
+        n('model', 'Модель', 'скоринг', 'ai', 630, 420, 200, 60, 'СЕРВИНГ'),
+        n('monitor', 'Мониторинг', 'дрейф, latency', 'monitoring', 950, 240, 200, 60, 'НАБЛЮДЕНИЕ'),
+        n('retrain', 'Переобучение', 'cron / календарь', 'scheduler', 950, 420, 200, 60, 'НАБЛЮДЕНИЕ')
+      ],
+      edges: [
+        e('raw', 'features', 'ETL признаков', false, 'data'),
+        e('features', 'trainer', 'dataset', false, 'data'),
+        e('trainer', 'registry', 'новая версия', false, 'data'),
+        e('registry', 'model', 'deploy версии', false, 'data'),
+        e('features', 'model', 'онлайн-признаки', false, 'data'),
+        e('api', 'model', 'predict', false, 'sync'),
+        e('api', 'monitor', 'метрики запросов', false, 'data'),
+        e('monitor', 'retrain', 'дрейф > порога', true, 'event'),
+        e('retrain', 'trainer', 'запуск job', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: ML-сервинг с Feature Store и переобучением по дрейфу.', 920, 550, 300, 50),
+        note('Легенда: DATA — признаки/модель, SYNC — инференс, EVT — событие переобучения.', 920, 610, 300, 50)
+      ]
+    },
+    {
+      id: 'rag-chat',
+      name: 'RAG-чат (LLM + векторная БД)',
+      description: 'Вопрос пользователя → эмбеддинг → поиск по базе знаний → контекст для LLM → ответ; трассировка и логи в мониторинг.',
+      tags: ['ai', 'llm', 'rag', 'vector'],
+      zones: [z('КЛИЕНТ', 40, 80, 220, 600), z('ПРИЛОЖЕНИЕ', 300, 80, 250, 600), z('ЗНАНИЯ', 590, 80, 250, 600), z('МОДЕЛЬ И КОНТРОЛЬ', 880, 80, 300, 600)],
+      nodes: [
+        n('user', 'Пользователь', 'чат / web', 'client', 70, 320, 180, 60, 'КЛИЕНТ'),
+        n('api', 'Chat API', 'сессия, лимиты', 'gateway', 330, 200, 190, 60, 'ПРИЛОЖЕНИЕ'),
+        n('orch', 'RAG Orchestrator', 'prompt + контекст', 'worker', 330, 390, 190, 60, 'ПРИЛОЖЕНИЕ'),
+        n('embed', 'Embedder', 'вектор запроса', 'worker', 620, 200, 190, 60, 'ЗНАНИЯ'),
+        n('vector', 'Векторная БД', 'top-k чанков', 'vector', 620, 390, 190, 60, 'ЗНАНИЯ'),
+        n('llm', 'LLM', 'генерация ответа', 'ai', 910, 200, 190, 60, 'МОДЕЛЬ И КОНТРОЛЬ'),
+        n('answer', 'Ответ / UI', 'стриминг токенов', 'client', 910, 390, 190, 60, 'МОДЕЛЬ И КОНТРОЛЬ'),
+        n('monitor', 'Мониторинг', 'трассировки, оценка', 'monitoring', 1090, 500, 170, 60, 'МОДЕЛЬ И КОНТРОЛЬ')
+      ],
+      edges: [
+        e('user', 'api', 'вопрос', false, 'sync'),
+        e('api', 'orch', 'запрос + история', false, 'sync'),
+        e('orch', 'embed', 'embed запроса', false, 'sync'),
+        e('embed', 'vector', 'векторный поиск', false, 'data'),
+        e('vector', 'llm', 'релевантные чанки', false, 'data'),
+        e('orch', 'llm', 'prompt + контекст', false, 'sync'),
+        e('llm', 'answer', 'ответ', false, 'sync'),
+        e('answer', 'user', 'показать ответ', false, 'sync'),
+        e('orch', 'monitor', 'логи/трассировка', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: RAG-чат: сообщение → поиск знаний → реакция LLM → результат.', 880, 560, 300, 50),
+        note('Легенда: SYNC — вызов, DATA — контекст, мониторинг видит всю цепочку.', 880, 620, 300, 44)
+      ]
+    },
+    {
+      id: 'iot',
+      name: 'IoT-телеметрия',
+      description: 'Датчики через MQTT-брокер и правила попадают в stream-обработку, Timeseries DB и дашборд; пороги уходят в алерты.',
+      tags: ['iot', 'mqtt', 'streaming', 'timeseries'],
+      zones: [z('УСТРОЙСТВА', 40, 80, 220, 600), z('БРОКЕР', 300, 80, 230, 600), z('ОБРАБОТКА', 570, 80, 270, 600), z('ХРАНЕНИЕ И UI', 880, 80, 300, 600)],
+      nodes: [
+        n('sensors', 'Датчики', 'MQTT / LoRa', 'client', 70, 300, 180, 60, 'УСТРОЙСТВА'),
+        n('gw', 'IoT Gateway', 'агрегация, TLS', 'balancer', 330, 200, 180, 60, 'БРОКЕР'),
+        n('mqtt', 'MQTT Broker', 'topics, QoS', 'queue', 330, 390, 180, 60, 'БРОКЕР'),
+        n('rules', 'Rules Engine', 'фильтры, пороги', 'worker', 600, 220, 190, 60, 'ОБРАБОТКА'),
+        n('stream', 'Stream Processor', 'окна, агрегаты', 'worker', 600, 410, 190, 60, 'ОБРАБОТКА'),
+        n('tsdb', 'Timeseries DB', 'метрики времени', 'db', 910, 220, 220, 60, 'ХРАНЕНИЕ И UI'),
+        n('alerts', 'Алерты', 'SMS / email / push', 'monitoring', 910, 410, 220, 60, 'ХРАНЕНИЕ И UI'),
+        n('dash', 'Дашборд', 'графики, карты', 'client', 910, 560, 220, 60, 'ХРАНЕНИЕ И UI')
+      ],
+      edges: [
+        e('sensors', 'gw', 'телеметрия', true, 'event'),
+        e('gw', 'mqtt', 'publish', true, 'event'),
+        e('mqtt', 'rules', 'subscribe', true, 'event'),
+        e('rules', 'stream', 'очищенные события', true, 'event'),
+        e('rules', 'alerts', 'порог превышен', false, 'event'),
+        e('stream', 'tsdb', 'точки данных', false, 'data'),
+        e('tsdb', 'dash', 'запросы', false, 'sync')
+      ],
+      notes: [
+        note('Заголовок: IoT-телеметрия: сообщение датчика → реакция правил → результат в БД и алертах.', 880, 640, 300, 44),
+        note('Легенда: EVT — MQTT-события, DATA — запись в БД, SYNC — запрос дашборда.', 880, 690, 300, 44)
+      ]
+    },
+    {
+      id: 'ecommerce',
+      name: 'E-commerce: заказ и оплата',
+      description: 'Каталог и корзина → оформление заказа → оплата и резерв остатков → события в брокере → уведомление и аналитика.',
+      tags: ['business', 'ecommerce', 'payments', 'inventory'],
+      zones: [z('КЛИЕНТ', 40, 80, 210, 600), z('КАТАЛОГ', 290, 80, 240, 600), z('ЗАКАЗ И ОПЛАТА', 570, 80, 310, 600), z('ИНФРАСТРУКТУРА', 920, 80, 280, 600)],
+      nodes: [
+        n('browser', 'Магазин (Web/Mobile)', 'каталог, корзина', 'client', 70, 330, 170, 60, 'КЛИЕНТ'),
+        n('gateway', 'API Gateway', 'роутинг, сессии', 'gateway', 320, 330, 180, 60, 'КАТАЛОГ'),
+        n('catalog', 'Catalog Service', 'товары, цены', 'service', 320, 170, 180, 60, 'КАТАЛОГ'),
+        n('cart', 'Cart (Redis)', 'корзина', 'cache', 320, 490, 180, 60, 'КАТАЛОГ'),
+        n('orders', 'Order Service', 'заказы, статусы', 'service', 600, 250, 190, 60, 'ЗАКАЗ И ОПЛАТА'),
+        n('payment', 'Payment Provider', 'эквайринг', 'external', 600, 430, 190, 60, 'ЗАКАЗ И ОПЛАТА'),
+        n('stock', 'Inventory Service', 'резерв остатков', 'service', 810, 250, 150, 60, 'ЗАКАЗ И ОПЛАТА'),
+        n('kafka', 'Kafka', 'order.* события', 'queue', 950, 200, 220, 60, 'ИНФРАСТРУКТУРА'),
+        n('pg', 'PostgreSQL', 'заказы, товары', 'db', 950, 380, 220, 60, 'ИНФРАСТРУКТУРА'),
+        n('notify', 'Notify / Analytics', 'email, push, BI', 'monitoring', 950, 540, 220, 60, 'ИНФРАСТРУКТУРА')
+      ],
+      edges: [
+        e('browser', 'gateway', 'HTTPS', false, 'sync'),
+        e('gateway', 'catalog', 'список товаров', false, 'sync'),
+        e('gateway', 'cart', 'добавить в корзину', false, 'data'),
+        e('gateway', 'orders', 'оформить заказ', false, 'sync'),
+        e('orders', 'payment', 'оплата', false, 'sync'),
+        e('orders', 'stock', 'зарезервировать', false, 'sync'),
+        e('orders', 'pg', 'транзакция', false, 'data'),
+        e('orders', 'kafka', 'order.created / paid', true, 'event'),
+        e('kafka', 'notify', 'consume', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: E-commerce: путь от товара до оплаченного заказа.', 920, 620, 280, 50),
+        note('Легенда: SYNC — вызовы, DATA — состояние, EVT — события заказа.', 920, 670, 280, 44)
+      ]
+    },
+    {
+      id: 'multi-region',
+      name: 'Мультирегион Active-Active',
+      description: 'CDN и глобальный балансировщик распределяют трафик между регионами; своя БД в каждом регионе, репликация и единый мониторинг.',
+      tags: ['cloud', 'ha', 'dr', 'multi-region'],
+      zones: [z('ГЛОБАЛЬНО', 40, 80, 220, 600), z('REGION EU', 300, 80, 260, 600), z('REGION US', 600, 80, 260, 600), z('ДАННЫЕ И НАБЛЮДЕНИЕ', 900, 80, 300, 600)],
+      nodes: [
+        n('users', 'Пользователи', 'весь мир', 'client', 70, 330, 180, 60, 'ГЛОБАЛЬНО'),
+        n('cdn', 'CDN', 'статик, кэш', 'balancer', 310, 200, 200, 60, 'ГЛОБАЛЬНО'),
+        n('gslb', 'GSLB', 'geo DNS, failover', 'balancer', 310, 420, 200, 60, 'ГЛОБАЛЬНО'),
+        n('ingressA', 'Ingress EU', 'TLS, WAF', 'gateway', 620, 200, 200, 60, 'REGION EU'),
+        n('appA', 'App EU', 'сервисы', 'service', 620, 390, 200, 60, 'REGION EU'),
+        n('ingressB', 'Ingress US', 'TLS, WAF', 'gateway', 920, 200, 200, 60, 'REGION US'),
+        n('appB', 'App US', 'сервисы', 'service', 920, 390, 200, 60, 'REGION US'),
+        n('pgA', 'DB EU', 'primary', 'db', 620, 560, 200, 60, 'REGION EU'),
+        n('pgB', 'DB US', 'replica / primary', 'db', 920, 560, 200, 60, 'REGION US'),
+        n('monitor', 'Глобальный мониторинг', 'health-check, SLO', 'monitoring', 1160, 330, 180, 70, 'ДАННЫЕ И НАБЛЮДЕНИЕ')
+      ],
+      edges: [
+        e('users', 'cdn', 'статик', false, 'sync'),
+        e('cdn', 'gslb', 'динамика', false, 'sync'),
+        e('gslb', 'ingressA', 'EU трафик', false, 'sync'),
+        e('gslb', 'ingressB', 'US трафик', false, 'sync'),
+        e('ingressA', 'appA', 'HTTP', false, 'sync'),
+        e('ingressB', 'appB', 'HTTP', false, 'sync'),
+        e('appA', 'pgA', 'SQL', false, 'data'),
+        e('appB', 'pgB', 'SQL', false, 'data'),
+        e('pgA', 'pgB', 'репликация', false, 'data'),
+        e('appA', 'monitor', 'health + метрики', false, 'data'),
+        e('appB', 'monitor', 'health + метрики', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Active-Active в двух регионах с репликацией и общим SLO.', 900, 650, 300, 44),
+        note('Легенда: SYNC — трафик, DATA — репликация и метрики.', 900, 700, 300, 44)
+      ]
+    },
+    {
+      id: 'strangler',
+      name: 'Strangler Fig: миграция с монолита',
+      description: 'Фасад перехватывает запросы и по правилам маршрутизации постепенно переводит их с монолита на новые сервисы.',
+      tags: ['migration', 'monolith', 'microservices', 'strangler'],
+      zones: [z('КЛИЕНТ', 40, 80, 210, 600), z('ФАСАД', 290, 80, 240, 600), z('НОВЫЕ СЕРВИСЫ', 570, 80, 300, 600), z('СТАРЫЙ МОНОЛИТ', 910, 80, 280, 600)],
+      nodes: [
+        n('client', 'Клиенты', 'web / mobile', 'client', 70, 330, 170, 60, 'КЛИЕНТ'),
+        n('facade', 'Strangler Facade', 'единая точка входа', 'gateway', 320, 330, 180, 60, 'ФАСАД'),
+        n('routes', 'Правила маршрутизации', 'feature flags', 'config', 320, 500, 180, 60, 'ФАСАД'),
+        n('orders', 'Orders Service', 'новый сервис', 'service', 600, 230, 190, 60, 'НОВЫЕ СЕРВИСЫ'),
+        n('catalog', 'Catalog Service', 'новый сервис', 'service', 600, 410, 190, 60, 'НОВЫЕ СЕРВИСЫ'),
+        n('legacy', 'Legacy Monolith', 'остаток системы', 'service', 940, 330, 200, 60, 'СТАРЫЙ МОНОЛИТ'),
+        n('legacyDb', 'Legacy DB', 'общая БД', 'db', 940, 510, 200, 60, 'СТАРЫЙ МОНОЛИТ'),
+        n('monitor', 'Мониторинг', 'доля трафика, ошибки', 'monitoring', 600, 570, 190, 60, 'НОВЫЕ СЕРВИСЫ')
+      ],
+      edges: [
+        e('client', 'facade', 'HTTPS', false, 'sync'),
+        e('routes', 'facade', 'куда вести запрос', false, 'data'),
+        e('facade', 'orders', 'новый маршрут', false, 'sync'),
+        e('facade', 'catalog', 'новый маршрут', false, 'sync'),
+        e('facade', 'legacy', 'старый маршрут', false, 'sync'),
+        e('legacy', 'legacyDb', 'SQL', false, 'data'),
+        e('orders', 'monitor', 'метрики', false, 'data'),
+        e('catalog', 'monitor', 'метрики', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Постепенная замена монолита через фасад и правила маршрутизации.', 910, 600, 280, 60),
+        note('Легенда: SYNC — запросы, DATA — правила и метрики.', 910, 660, 280, 44)
+      ]
+    },
+    {
+      id: 'observability',
+      name: 'Наблюдаемость: метрики, логи, трейсы',
+      description: 'Сервисы и демоны-экспортеры отдают health-check и телеметрию; Prometheus, Loki и трейсы ведут в Grafana и Alertmanager.',
+      tags: ['observability', 'monitoring', 'health-check', 'sre'],
+      zones: [z('ИСТОЧНИКИ', 40, 80, 230, 600), z('СБОР', 310, 80, 250, 600), z('ХРАНЕНИЕ', 600, 80, 260, 600), z('ПОТРЕБЛЕНИЕ', 900, 80, 300, 600)],
+      nodes: [
+        n('app', 'Сервисы', 'бизнес-логика', 'service', 70, 220, 190, 60, 'ИСТОЧНИКИ'),
+        n('daemon', 'Node Exporter / Демон', 'метрики хоста', 'daemon', 70, 400, 190, 60, 'ИСТОЧНИКИ'),
+        n('health', 'Health-check', '/healthz, /ready', 'monitoring', 340, 200, 190, 60, 'СБОР'),
+        n('otel', 'OpenTelemetry Collector', 'метрики, логи, трейсы', 'worker', 340, 400, 190, 60, 'СБОР'),
+        n('prom', 'Prometheus', 'метрики и алерты', 'monitoring', 630, 200, 200, 60, 'ХРАНЕНИЕ'),
+        n('loki', 'Loki / S3', 'логи и архив', 'storage', 630, 380, 200, 60, 'ХРАНЕНИЕ'),
+        n('grafana', 'Grafana', 'дашборды SLO', 'client', 930, 200, 220, 60, 'ПОТРЕБЛЕНИЕ'),
+        n('alert', 'Alertmanager', 'дежурный, тикеты', 'monitoring', 930, 400, 220, 60, 'ПОТРЕБЛЕНИЕ')
+      ],
+      edges: [
+        e('app', 'health', 'GET /healthz', false, 'sync'),
+        e('app', 'otel', 'трейсы, логи', false, 'data'),
+        e('daemon', 'otel', 'метрики хоста', false, 'data'),
+        e('health', 'prom', 'probe результат', false, 'data'),
+        e('otel', 'prom', 'метрики', false, 'data'),
+        e('otel', 'loki', 'логи', false, 'data'),
+        e('prom', 'grafana', 'PromQL', false, 'sync'),
+        e('loki', 'grafana', 'запрос логов', false, 'sync'),
+        e('prom', 'alert', 'правило сработало', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: Наблюдаемость: health-check → сбор → хранение → дашборд и алерт.', 900, 520, 300, 60),
+        note('Легенда: SYNC — probe/запрос, DATA — телеметрия, EVT — алерт.', 900, 600, 300, 50)
+      ]
+    },
+
+    /* ---------- Логические и событийные диаграммы процессов ---------- */
+    {
+      id: 'flow-message',
+      category: 'process',
+      name: 'Сообщение → реакция → результат',
+      description: 'Универсальный шаблон логической диаграммы: входящее сообщение классифицируется, обработчик реагирует в инструменте, результат уходит пользователю и в журнал.',
+      tags: ['process', 'message', 'webhook', 'flow'],
+      zones: [z('СООБЩЕНИЕ', 40, 80, 220, 600), z('РЕАКЦИЯ', 300, 80, 250, 600), z('ИНСТРУМЕНТЫ', 590, 80, 270, 600), z('РЕЗУЛЬТАТ', 900, 80, 300, 600)],
+      nodes: [
+        n('msg', 'Входящее сообщение', 'Telegram / Email / Slack', 'client', 70, 260, 180, 60, 'СООБЩЕНИЕ'),
+        n('webhook', 'Webhook / Bot API', 'приём payload', 'gateway', 330, 210, 190, 60, 'РЕАКЦИЯ'),
+        n('classify', 'Классификация', 'интент, язык', 'worker', 330, 410, 190, 60, 'РЕАКЦИЯ'),
+        n('handler', 'Обработчик', 'бизнес-правила', 'service', 620, 250, 190, 60, 'ИНСТРУМЕНТЫ'),
+        n('store', 'БД / CRM', 'состояние заявки', 'db', 620, 440, 190, 60, 'ИНСТРУМЕНТЫ'),
+        n('reply', 'Ответ пользователю', 'подтверждение', 'client', 930, 250, 200, 60, 'РЕЗУЛЬТАТ'),
+        n('audit', 'Аудит / логи', 'история событий', 'monitoring', 930, 440, 200, 60, 'РЕЗУЛЬТАТ')
+      ],
+      edges: [
+        e('msg', 'webhook', 'message.received', true, 'event'),
+        e('webhook', 'classify', 'текст + метаданные', false, 'sync'),
+        e('classify', 'handler', 'интент выбран', false, 'sync'),
+        e('handler', 'store', 'сохранить результат', false, 'data'),
+        e('handler', 'reply', 'answer', false, 'sync'),
+        e('reply', 'msg', 'доставлено', false, 'sync'),
+        e('handler', 'audit', 'событие обработки', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Сообщение → реакция в инструменте → результат.', 900, 550, 300, 50),
+        note('Легенда: EVT — входящее событие, SYNC — вызов, DATA — запись результата.', 900, 610, 300, 50)
+      ]
+    },
+    {
+      id: 'flow-webhook',
+      category: 'process',
+      name: 'Webhook платежа → заказ → уведомление',
+      description: 'Платёжный шлюз присылает webhook; шина событий разносит payment.succeeded по сервисам, меняется статус заказа, резервируются остатки и уходит уведомление.',
+      tags: ['process', 'event', 'payment', 'webhook'],
+      zones: [z('ТРИГГЕР', 40, 80, 220, 600), z('ШИНА', 300, 80, 240, 600), z('РЕАКЦИИ', 580, 80, 300, 600), z('РЕЗУЛЬТАТ', 920, 80, 280, 600)],
+      nodes: [
+        n('provider', 'Платёжный шлюз', 'внешний webhook', 'external', 70, 330, 180, 60, 'ТРИГГЕР'),
+        n('endpoint', 'Webhook Endpoint', 'проверка подписи', 'gateway', 330, 330, 180, 60, 'ШИНА'),
+        n('bus', 'Event Bus', 'payment.succeeded', 'queue', 610, 330, 180, 60, 'РЕАКЦИИ'),
+        n('orders', 'Order Worker', 'статус → paid', 'worker', 830, 200, 160, 60, 'РЕАКЦИИ'),
+        n('stock', 'Stock Worker', 'списать остатки', 'worker', 830, 370, 160, 60, 'РЕАКЦИИ'),
+        n('notify', 'Notify Worker', 'email / push', 'daemon', 950, 520, 180, 60, 'РЕАКЦИИ'),
+        n('db', 'Order DB', 'итоговый статус', 'db', 950, 200, 200, 60, 'РЕЗУЛЬТАТ'),
+        n('client', 'Покупатель', '«Заказ оплачен»', 'client', 950, 370, 200, 60, 'РЕЗУЛЬТАТ')
+      ],
+      edges: [
+        e('provider', 'endpoint', 'POST /webhook', true, 'event'),
+        e('endpoint', 'bus', 'publish event', true, 'event'),
+        e('bus', 'orders', 'consume', true, 'event'),
+        e('bus', 'stock', 'consume', true, 'event'),
+        e('bus', 'notify', 'consume', true, 'event'),
+        e('orders', 'db', 'UPDATE status', false, 'data'),
+        e('notify', 'client', 'уведомление', false, 'sync'),
+        e('orders', 'client', 'результат заказа', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Событие оплаты → реакции сервисов → результат для покупателя.', 920, 600, 280, 50),
+        note('Легенда: EVT — событие шины, SYNC — уведомление, DATA — изменение состояния.', 920, 650, 280, 50)
+      ]
+    },
+    {
+      id: 'flow-saga',
+      category: 'process',
+      name: 'Saga: компенсация при ошибке',
+      description: 'Оркестратор проводит заказ через резерв, оплату и доставку; при отказе шага срабатывают компенсирующие события (refund, release).',
+      tags: ['process', 'saga', 'event', 'compensation'],
+      zones: [z('КОМАНДА', 40, 80, 210, 600), z('ОРКЕСТРАТОР', 290, 80, 240, 600), z('ШАГИ', 570, 80, 300, 600), z('КОМПЕНСАЦИЯ', 910, 80, 290, 600)],
+      nodes: [
+        n('request', 'Запрос на заказ', 'пользователь', 'client', 70, 330, 170, 60, 'КОМАНДА'),
+        n('saga', 'Saga Orchestrator', 'состояние процесса', 'worker', 320, 320, 190, 70, 'ОРКЕСТРАТОР'),
+        n('order', 'Create Order', 'шаг 1', 'service', 600, 180, 180, 60, 'ШАГИ'),
+        n('stock', 'Reserve Stock', 'шаг 2', 'service', 600, 320, 180, 60, 'ШАГИ'),
+        n('payment', 'Charge Payment', 'шаг 3', 'external', 600, 460, 180, 60, 'ШАГИ'),
+        n('ship', 'Ship Order', 'шаг 4', 'daemon', 820, 320, 160, 60, 'ШАГИ'),
+        n('comp', 'Компенсации', 'release / refund', 'config', 940, 200, 200, 60, 'КОМПЕНСАЦИЯ'),
+        n('audit', 'Журнал Saga', 'все события', 'monitoring', 940, 470, 200, 60, 'КОМПЕНСАЦИЯ')
+      ],
+      edges: [
+        e('request', 'saga', 'order.create', true, 'event'),
+        e('saga', 'order', 'command', true, 'event'),
+        e('order', 'stock', 'order.created', true, 'event'),
+        e('stock', 'payment', 'stock.reserved', true, 'event'),
+        e('payment', 'ship', 'payment.charged', true, 'event'),
+        e('stock', 'comp', 'payment.failed → release', true, 'event'),
+        e('payment', 'comp', 'ship.failed → refund', true, 'event'),
+        e('comp', 'audit', 'compensated', false, 'data'),
+        e('saga', 'audit', 'шаги процесса', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Saga — событийная диаграмма с компенсирующими транзакциями.', 910, 550, 290, 60),
+        note('Легенда: EVT — команды и события шагов, DATA — журнал процесса.', 910, 620, 290, 50)
+      ]
+    },
+    {
+      id: 'flow-outbox',
+      category: 'process',
+      name: 'Transactional Outbox',
+      description: 'Команда пишет состояние и событие в одной транзакции; демон-relay читает outbox и публикует в брокер, а consumer-ы обновляют read model.',
+      tags: ['process', 'event', 'outbox', 'consistency'],
+      zones: [z('ТРАНЗАКЦИЯ', 40, 80, 230, 600), z('РЕЛЕЙ', 310, 80, 230, 600), z('БРОКЕР', 580, 80, 230, 600), z('ПОТРЕБИТЕЛИ', 850, 80, 330, 600)],
+      nodes: [
+        n('api', 'Command API', 'запрос на изменение', 'gateway', 70, 330, 190, 60, 'ТРАНЗАКЦИЯ'),
+        n('db', 'БД + Outbox', 'INSERT + event', 'db', 70, 490, 190, 60, 'ТРАНЗАКЦИЯ'),
+        n('relay', 'Outbox Relay', 'poll / CDC демон', 'daemon', 340, 330, 190, 60, 'РЕЛЕЙ'),
+        n('monitor', 'Лаг релея', 'метрика, алерт', 'monitoring', 340, 500, 190, 60, 'РЕЛЕЙ'),
+        n('kafka', 'Kafka', '_at-least-once_', 'queue', 610, 330, 190, 60, 'БРОКЕР'),
+        n('read', 'Read Model', 'проекция', 'analytics', 880, 230, 200, 60, 'ПОТРЕБИТЕЛИ'),
+        n('notify', 'Notify Consumer', 'email / push', 'worker', 880, 430, 200, 60, 'ПОТРЕБИТЕЛИ')
+      ],
+      edges: [
+        e('api', 'db', 'BEGIN → COMMIT', false, 'data'),
+        e('db', 'relay', 'новые строки outbox', false, 'data'),
+        e('relay', 'kafka', 'publish', true, 'event'),
+        e('relay', 'monitor', 'лаг публикации', false, 'data'),
+        e('kafka', 'read', 'consume → проекция', true, 'event'),
+        e('kafka', 'notify', 'consume → письмо', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: Outbox — состояние и событие фиксируются одной транзакцией.', 850, 550, 320, 60),
+        note('Легенда: DATA — чтение outbox/БД, EVT — публикация и consumption.', 850, 620, 320, 44)
+      ]
+    },
+    {
+      id: 'flow-retry-dlq',
+      category: 'process',
+      name: 'Обработка события: retry и DLQ',
+      description: 'Consumer не смог обработать событие: несколько повторов с backoff, затем событие уходит в DLQ, поднимается алерт и после фикса выполняется replay.',
+      tags: ['process', 'event', 'retry', 'dlq', 'error-handling'],
+      zones: [z('СОБЫТИЕ', 40, 80, 210, 600), z('ОБРАБОТКА', 290, 80, 240, 600), z('ПОВТОРЫ', 570, 80, 250, 600), z('РАЗБОР', 860, 80, 320, 600)],
+      nodes: [
+        n('source', 'Очередь событий', ' Kafka / SQS', 'queue', 70, 330, 170, 60, 'СОБЫТИЕ'),
+        n('consumer', 'Consumer', 'бизнес-обработка', 'worker', 320, 250, 190, 60, 'ОБРАБОТКА'),
+        n('result', 'Успех → БД', 'результат', 'db', 320, 450, 190, 60, 'ОБРАБОТКА'),
+        n('retry', 'Retry (backoff)', '3 попытки', 'scheduler', 600, 250, 190, 60, 'ПОВТОРЫ'),
+        n('dlq', 'DLQ', 'необработанные', 'storage', 600, 450, 190, 60, 'ПОВТОРЫ'),
+        n('alert', 'Алерт дежурному', 'ошибка обработки', 'monitoring', 890, 230, 200, 60, 'РАЗБОР'),
+        n('support', 'Разбор incident', 'причина, фикс', 'client', 890, 410, 200, 60, 'РАЗБОР'),
+        n('replay', 'Replay из DLQ', 'повторная подача', 'daemon', 890, 560, 200, 60, 'РАЗБОР')
+      ],
+      edges: [
+        e('source', 'consumer', 'consume', true, 'event'),
+        e('consumer', 'result', 'успех', false, 'data'),
+        e('consumer', 'retry', 'ошибка', true, 'event'),
+        e('retry', 'consumer', 'повтор', true, 'event'),
+        e('retry', 'dlq', 'лимит попыток', true, 'event'),
+        e('dlq', 'alert', 'новое событие', true, 'event'),
+        e('alert', 'support', 'расследование', false, 'sync'),
+        e('support', 'replay', 'фикс готов', false, 'sync'),
+        e('replay', 'source', 'replay события', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: Событие → реакция consumer → результат, retry или DLQ.', 860, 640, 320, 44),
+        note('Легенда: EVT — события и повторы, DATA — успешный результат.', 860, 690, 320, 44)
+      ]
+    },
+    {
+      id: 'flow-incident',
+      category: 'process',
+      name: 'Инцидент: от алерта до постмортема',
+      description: 'Health-check и метрики поднимают алерт, дежурный открывает дашборд и логи, выкатывается фикс, затем фиксируется постмортем и действия.',
+      tags: ['process', 'incident', 'sre', 'monitoring'],
+      zones: [z('СИГНАЛ', 40, 80, 220, 600), z('РЕАГИРОВАНИЕ', 300, 80, 250, 600), z('ИНСТРУМЕНТЫ', 590, 80, 270, 600), z('ИТОГ', 900, 80, 300, 600)],
+      nodes: [
+        n('health', 'Health-check / SLO', 'проба сервиса', 'monitoring', 70, 240, 180, 60, 'СИГНАЛ'),
+        n('alert', 'Alertmanager', 'страница дежурному', 'monitoring', 70, 430, 180, 60, 'СИГНАЛ'),
+        n('oncall', 'Дежурный инженер', 'принял алерт', 'client', 330, 240, 190, 60, 'РЕАГИРОВАНИЕ'),
+        n('dash', 'Grafana / Дашборд', 'метрики, трейсы', 'analytics', 330, 430, 190, 60, 'РЕАГИРОВАНИЕ'),
+        n('logs', 'Логи (Loki)', 'причина ошибки', 'storage', 620, 200, 190, 60, 'ИНСТРУМЕНТЫ'),
+        n('fix', 'Фикс в коде', 'hotfix / конфиг', 'worker', 620, 390, 190, 60, 'ИНСТРУМЕНТЫ'),
+        n('deploy', 'Выкатка', 'CI/CD pipeline', 'ci', 930, 240, 200, 60, 'ИТОГ'),
+        n('post', 'Постмортем', 'без вины, действия', 'config', 930, 450, 200, 60, 'ИТОГ')
+      ],
+      edges: [
+        e('health', 'alert', 'порог нарушен', true, 'event'),
+        e('alert', 'oncall', 'page / push', true, 'event'),
+        e('oncall', 'dash', 'открыть метрики', false, 'sync'),
+        e('dash', 'logs', 'переход к логам', false, 'sync'),
+        e('logs', 'fix', 'найдена причина', false, 'data'),
+        e('fix', 'deploy', 'merge + deploy', false, 'sync'),
+        e('deploy', 'health', 'проверка восстановления', false, 'sync'),
+        e('deploy', 'post', 'итоги инцидента', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Инцидент: сигнал мониторинга → реакция инженера → фикс → постмортем.', 900, 550, 300, 60),
+        note('Легенда: EVT — алерты, SYNC — действия, DATA — артефакты расследования.', 900, 620, 300, 50)
+      ]
+    },
+    {
+      id: 'flow-cicd',
+      category: 'process',
+      name: 'CI/CD: от коммита до health-check',
+      description: 'Push в репозиторий запускает сборку и тесты, артефакт уходит в registry, деплой проверяется health-check и smoke-тестом перед релизом.',
+      tags: ['process', 'cicd', 'devops', 'health-check'],
+      zones: [z('ИСТОЧНИК', 40, 80, 210, 600), z('СБОРКА', 290, 80, 240, 600), z('ВЫКАТКА', 570, 80, 270, 600), z('ПРОВЕРКА', 880, 80, 300, 600)],
+      nodes: [
+        n('git', 'Git Repository', 'push / PR', 'external', 70, 330, 170, 60, 'ИСТОЧНИК'),
+        n('ci', 'CI Pipeline', 'build, линтеры', 'ci', 320, 200, 190, 60, 'СБОРКА'),
+        n('tests', 'Тесты', 'unit, integration', 'ci', 320, 390, 190, 60, 'СБОРКА'),
+        n('registry', 'Artifact Registry', 'Docker image', 'storage', 600, 200, 190, 60, 'ВЫКАТКА'),
+        n('deploy', 'Deploy Job', 'dev → stage → prod', 'ci', 600, 400, 190, 60, 'ВЫКАТКА'),
+        n('health', 'Health-check', 'readiness / liveness', 'monitoring', 910, 230, 200, 60, 'ПРОВЕРКА'),
+        n('smoke', 'Smoke-тест', 'критичный сценарий', 'worker', 910, 420, 200, 60, 'ПРОВЕРКА'),
+        n('release', 'Релиз', 'тег, уведомление', 'client', 1090, 560, 160, 60, 'ПРОВЕРКА')
+      ],
+      edges: [
+        e('git', 'ci', 'push event', true, 'event'),
+        e('ci', 'tests', 'запуск тестов', false, 'sync'),
+        e('tests', 'registry', 'собрать образ', false, 'data'),
+        e('registry', 'deploy', 'образ готов', false, 'data'),
+        e('deploy', 'health', 'проба сервиса', false, 'sync'),
+        e('health', 'smoke', 'сервис готов', false, 'sync'),
+        e('smoke', 'release', 'проверки пройдены', false, 'sync'),
+        e('release', 'git', 'тег версии', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: CI/CD: коммит → сборка → выкатка → health-check → релиз.', 880, 640, 300, 44),
+        note('Легенда: EVT — событие push, SYNC — шаги пайплайна, DATA — артефакты.', 880, 690, 300, 44)
+      ]
+    },
+    {
+      id: 'flow-cron',
+      category: 'process',
+      name: 'Cron → демон → отчёт → уведомление',
+      description: 'Планировщик будит фоновую задачу, она читает данные через API, строит отчёт, сохраняет его и отправляет письмо; результат виден в мониторинге.',
+      tags: ['process', 'cron', 'daemon', 'batch'],
+      zones: [z('ТРИГГЕР', 40, 80, 210, 600), z('ФОНОВАЯ ЗАДАЧА', 290, 80, 250, 600), z('ДАННЫЕ', 580, 80, 260, 600), z('РЕЗУЛЬТАТ', 880, 80, 300, 600)],
+      nodes: [
+        n('cron', 'Планировщик', 'cron / timer', 'scheduler', 70, 330, 170, 60, 'ТРИГГЕР'),
+        n('daemon', 'Демон задачи', 'single instance', 'daemon', 320, 330, 190, 60, 'ФОНОВАЯ ЗАДАЧА'),
+        n('lock', 'Блокировка', 'Распределённый lock', 'config', 320, 500, 190, 60, 'ФОНОВАЯ ЗАДАЧА'),
+        n('api', 'Внешний API', 'источник данных', 'external', 610, 220, 190, 60, 'ДАННЫЕ'),
+        n('db', 'БД', 'сырые записи', 'db', 610, 430, 190, 60, 'ДАННЫЕ'),
+        n('report', 'Отчёт / S3', 'CSV, PDF', 'storage', 910, 220, 200, 60, 'РЕЗУЛЬТАТ'),
+        n('mail', 'Получатели', 'email / Slack', 'client', 910, 420, 200, 60, 'РЕЗУЛЬТАТ'),
+        n('monitor', 'Мониторинг задачи', 'успех / длительность', 'monitoring', 1090, 560, 170, 60, 'РЕЗУЛЬТАТ')
+      ],
+      edges: [
+        e('cron', 'daemon', 'tick', true, 'event'),
+        e('daemon', 'lock', 'занять lock', false, 'sync'),
+        e('daemon', 'api', 'fetch данные', false, 'sync'),
+        e('api', 'db', 'сохранить', false, 'data'),
+        e('db', 'report', 'собрать отчёт', false, 'data'),
+        e('daemon', 'mail', 'отправить ссылку', false, 'sync'),
+        e('daemon', 'monitor', 'метрика запуска', false, 'data')
+      ],
+      notes: [
+        note('Заголовок: Запланированное событие → реакция демона → отчёт и уведомление.', 880, 640, 300, 44),
+        note('Легенда: EVT — tick, SYNC — вызовы, DATA — результат задачи.', 880, 690, 300, 44)
+      ]
     }
   ];
+
+  PRESETS.forEach(p => { if (!p.category) p.category = 'architecture'; });
 
   function labelOf(preset, key) {
     const node = preset.nodes.find(x => x.key === key);

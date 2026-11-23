@@ -370,6 +370,12 @@
     </div>
 
     <div class="sec">
+      <h2>Примеры блоков и событий</h2>
+      <div class="hint">Готовые фрагменты: блоки + подписанные стрелки + легенда. Вставляются в центр экрана, затем их можно двигать и редактировать.</div>
+      <div class="palette" id="examplePalette" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
       <h2>Связи блоков</h2>
       <div class="hint">Новая стрелка прилипает к ближайшему блоку. Зелёная галочка — оба конца привязаны, красный крестик — связь висит в воздухе. Двойной клик по стрелке меняет подпись и тип.</div>
       <div class="row" style="margin-top:8px">
@@ -552,9 +558,17 @@
 
 <div id="presetModal" class="hidden">
   <div class="box" style="width:min(560px,100%)">
-    <h3>Пресеты архитектур</h3>
-    <div class="hint">13 вариантов: классические (монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless) и современные (модульный монолит, Clean, BFF, стриминг, микрофронтенды, service mesh).</div>
-    <select id="presetSelect" style="margin-top:10px"></select>
+    <h3>Пресеты и сценарии</h3>
+    <div class="hint" id="presetHint">Пресеты архитектур и логические/событийные диаграммы процессов.</div>
+    <div class="row" style="margin-top:10px">
+      <label style="min-width:auto;color:var(--muted)">Категория</label>
+      <select id="presetCategory">
+        <option value="all">Все</option>
+        <option value="architecture">Архитектуры</option>
+        <option value="process">Процессы и события</option>
+      </select>
+    </div>
+    <select id="presetSelect" style="margin-top:8px"></select>
     <div class="hint" id="presetDesc" style="margin-top:8px"></div>
     <div class="row" style="margin-top:10px">
       <button class="btn primary" id="presetLoad" style="flex:1">Заменить слой</button>
@@ -598,7 +612,19 @@
     cache:    { label: 'Кэш',         sub: 'Redis',          color: '#ffb454' },
     queue:    { label: 'Очередь',     sub: 'Kafka / SQS',    color: '#f472b6' },
     storage:  { label: 'Хранилище',   sub: 'S3 / Files',     color: '#a3e635' },
-    external: { label: 'Внешний API', sub: '3rd party',      color: '#94a3b8' }
+    external: { label: 'Внешний API', sub: '3rd party',      color: '#94a3b8' },
+    monitoring: { label: 'Мониторинг',  sub: 'Health / метрики', color: '#22d3ee' },
+    daemon:     { label: 'Демон',        sub: 'Фоновая задача',   color: '#a3e635' },
+    worker:     { label: 'Worker',       sub: 'Обработчик событий', color: '#fb923c' },
+    scheduler:  { label: 'Планировщик', sub: 'Cron / таймер',     color: '#facc15' },
+    balancer:   { label: 'Балансировщик', sub: 'L4 / L7',          color: '#60a5fa' },
+    auth:       { label: 'Авторизация', sub: 'JWT / IAM',         color: '#e879f9' },
+    analytics:  { label: 'Аналитика',   sub: 'OLAP / BI',          color: '#34d399' },
+    ci:         { label: 'CI/CD',       sub: 'Билд и деплой',      color: '#818cf8' },
+    config:     { label: 'Конфиги',     sub: 'Config / Secrets',   color: '#94a3b8' },
+    firewall:   { label: 'Файрвол',     sub: 'WAF / правила',      color: '#f87171' },
+    ai:         { label: 'LLM / AI',    sub: 'Модель / инференс',  color: '#f0abfc' },
+    vector:     { label: 'Векторная БД', sub: 'Эмбеддинги',        color: '#c084fc' }
   };
 
   /* Типы связей берём из ядра; локальный fallback нужен только если core.js не загрузился. */
@@ -1915,8 +1941,152 @@
     const b = document.createElement('button');
     b.className = 'pal'; b.dataset.kind = k;
     b.innerHTML = `<span class="dot" style="background:${v.color}"></span>${v.label}`;
+    b.title = k + ' — ' + v.sub;
     b.addEventListener('click', () => setTool(k));
     pal.appendChild(b);
+  });
+
+  /* Готовые фрагменты: блоки + подписанные связи + легенда событий. */
+  let exampleOffset = 0;
+  function exBlock(kind, label, sub, x, y) {
+    const el = block('u' + (++state.blockSeq), x, y, 190, 60, label, sub, kind);
+    el.framed = true; el.shape = 'rect'; fitTextBlock(el); return el;
+  }
+  function exLink(a, b, label, kind) {
+    const sx = a.x + a.w / 2, sy = a.y + a.h / 2;
+    const tx = b.x + b.w / 2, ty = b.y + b.h / 2;
+    let x1 = sx, y1 = sy, x2 = tx, y2 = ty;
+    if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+      const s = Math.sign(tx - sx) || 1;
+      x1 = sx + s * a.w / 2; x2 = tx - s * b.w / 2;
+    } else {
+      const s = Math.sign(ty - sy) || 1;
+      y1 = sy + s * a.h / 2; y2 = ty - s * b.h / 2;
+    }
+    const k = EDGE_KINDS[kind] ? kind : 'sync';
+    return {
+      type: 'arrow', x1, y1, x2, y2,
+      fromLabel: a.label, toLabel: b.label, fromId: a.id, toId: b.id,
+      note: label, kind: k, dashed: kindIsAsync(k), color: '#6f86b8', width: 2
+    };
+  }
+  function exNote(text, x, y, w, h) {
+    return { type: 'note', x, y, w: w || 420, h: h || 66, text, color: '#ffb454' };
+  }
+  const EXAMPLES = [
+    {
+      label: '💓 Health-check',
+      make: () => {
+        const svc = exBlock('service', 'Сервис', 'GET /healthz', 0, 0);
+        const mon = exBlock('monitoring', 'Мониторинг', 'проба каждые 10 с', 320, 0);
+        return [svc, mon, exLink(svc, mon, '200 OK / 5xx', 'sync'),
+          exNote('Заголовок: Health-check сервиса\nЛегенда: SYNC — проба, EVT — алерт при 5xx/таймауте.', 0, 125, 510, 66)];
+      }
+    },
+    {
+      label: '🧵 Демон → очередь → воркер',
+      make: () => {
+        const d = exBlock('daemon', 'Демон', 'фоновая задача', 0, 0);
+        const q = exBlock('queue', 'Очередь', 'job.created', 300, 0);
+        const w = exBlock('worker', 'Worker', 'обработчик', 600, 0);
+        const db = exBlock('db', 'БД', 'результат', 900, 0);
+        return [d, q, w, db,
+          exLink(d, q, 'publish job.created', 'event'),
+          exLink(q, w, 'consume', 'event'),
+          exLink(w, db, 'сохранить результат', 'data'),
+          exNote('Заголовок: Демон → очередь → воркер → БД\nЛегенда: EVT — задания, DATA — результат обработки.', 0, 130, 1090, 66)];
+      }
+    },
+    {
+      label: '📨 Сообщение → реакция → результат',
+      make: () => {
+        const msg = exBlock('client', 'Сообщение', 'Telegram / Email', 0, 0);
+        const h = exBlock('worker', 'Обработчик', 'интент → действие', 300, 0);
+        const tool = exBlock('service', 'Инструмент', 'CRM / API', 600, 0);
+        const out = exBlock('client', 'Результат', 'ответ пользователю', 900, 0);
+        return [msg, h, tool, out,
+          exLink(msg, h, 'message.received', 'event'),
+          exLink(h, tool, 'вызов инструмента', 'sync'),
+          exLink(tool, out, 'результат', 'data'),
+          exNote('Заголовок: Сообщение → реакция в инструменте → результат\nЛегенда: EVT — входящее сообщение, SYNC — вызов, DATA — результат.', 0, 130, 1090, 66)];
+      }
+    },
+    {
+      label: '🔁 Retry + DLQ + алерт',
+      make: () => {
+        const q = exBlock('queue', 'Очередь', 'события', 0, 0);
+        const w = exBlock('worker', 'Consumer', 'обработка', 300, 0);
+        const r = exBlock('scheduler', 'Retry', '3 попытки, backoff', 600, 0);
+        const dlq = exBlock('storage', 'DLQ', 'необработанные', 900, 0);
+        const m = exBlock('monitoring', 'Алерт', 'дежурный', 1200, 0);
+        return [q, w, r, dlq, m,
+          exLink(q, w, 'consume', 'event'),
+          exLink(w, r, 'ошибка', 'event'),
+          exLink(r, w, 'повтор', 'event'),
+          exLink(r, dlq, 'лимит попыток', 'event'),
+          exLink(dlq, m, 'новое событие', 'event'),
+          exNote('Заголовок: Ошибка обработки → retry → DLQ → алерт\nЛегенда: EVT — события и повторы, DATA — успешный результат в БД.', 0, 130, 1390, 66)];
+      }
+    },
+    {
+      label: '⏰ Cron → демону → отчёт',
+      make: () => {
+        const c = exBlock('scheduler', 'Cron', 'каждый час', 0, 0);
+        const d = exBlock('daemon', 'Демон', 'задача', 300, 0);
+        const rep = exBlock('storage', 'Отчёт', 'S3 / CSV', 600, 0);
+        const mail = exBlock('client', 'Получатели', 'email / Slack', 900, 0);
+        const m = exBlock('monitoring', 'Мониторинг', 'успех, длительность', 1200, 0);
+        return [c, d, rep, mail, m,
+          exLink(c, d, 'tick', 'event'),
+          exLink(d, rep, 'собрать отчёт', 'data'),
+          exLink(rep, mail, 'ссылка на отчёт', 'sync'),
+          exLink(d, m, 'метрика задачи', 'data'),
+          exNote('Заголовок: Запланированное событие → реакция демона → отчёт\nЛегенда: EVT — tick, SYNC — уведомление, DATA — артефакты.', 0, 130, 1390, 66)];
+      }
+    },
+    {
+      label: '🔐 Запрос → JWT → решение',
+      make: () => {
+        const cl = exBlock('client', 'Клиент', 'браузер / приложение', 0, 0);
+        const gw = exBlock('gateway', 'API Gateway', 'маршрутизация', 300, 0);
+        const auth = exBlock('auth', 'IAM / JWT', 'проверка токена', 600, 0);
+        const audit = exBlock('monitoring', 'Аудит', 'журнал решений', 900, 0);
+        return [cl, gw, auth, audit,
+          exLink(cl, gw, 'HTTPS + JWT', 'sync'),
+          exLink(gw, auth, 'validate token', 'auth'),
+          exLink(auth, gw, 'allow / deny', 'auth'),
+          exLink(gw, audit, 'решение + запрос', 'data'),
+          exNote('Заголовок: Запрос → проверка токена → решение → аудит\nЛегенда: SYNC — запрос, AUTH — проверка, DATA — журнал.', 0, 130, 1090, 66)];
+      }
+    }
+  ];
+  const expal = $('#examplePalette');
+  EXAMPLES.forEach(ex => {
+    const b = document.createElement('button');
+    b.className = 'pal'; b.textContent = ex.label;
+    b.style.gridColumn = 'span 2';
+    b.title = 'Вставить готовый фрагмент: ' + ex.label;
+    b.addEventListener('click', () => {
+      const els = ex.make();
+      const boxes = els.filter(el => el.type !== 'arrow');
+      const minX = Math.min(...boxes.map(el => el.x)), maxX = Math.max(...boxes.map(el => el.x + el.w));
+      const minY = Math.min(...boxes.map(el => el.y)), maxY = Math.max(...boxes.map(el => el.y + el.h));
+      const rect = canvas.getBoundingClientRect();
+      const c = toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const dx = c.x - (minX + maxX) / 2 + exampleOffset;
+      const dy = c.y - (minY + maxY) / 2 + exampleOffset;
+      exampleOffset = (exampleOffset + 30) % 120;
+      els.forEach(el => {
+        if (el.type === 'arrow') { el.x1 += dx; el.x2 += dx; el.y1 += dy; el.y2 += dy; }
+        else { el.x += dx; el.y += dy; }
+      });
+      snapshot();
+      if (state.showTemplate) { state.showTemplate = false; $('#showTemplate').checked = false; }
+      state.elements = state.elements.concat(els);
+      state.selected = null; render();
+      toast('Пример добавлен: ' + ex.label);
+    });
+    expal.appendChild(b);
   });
 
   $('#widthRange').addEventListener('input', e => { state.width = +e.target.value; $('#widthVal').textContent = state.width; });
@@ -2386,7 +2556,19 @@
       const id = 'u' + (++state.blockSeq);
       const type = String(n.type || '').toLowerCase();
       let kind = 'service';
-      if (/db|database|postgres|mysql|mongo|elastic|redis|cache/.test(type)) kind = /cache|redis/.test(type) ? 'cache' : 'db';
+      if (/monitor|health|prometheus|grafana|slo|alert/.test(type)) kind = 'monitoring';
+      else if (/daemon|exporter|systemd|supervisor/.test(type)) kind = 'daemon';
+      else if (/cron|scheduler|timer|schedule/.test(type)) kind = 'scheduler';
+      else if (/worker|consumer|processor|flink|spark/.test(type)) kind = 'worker';
+      else if (/balancer|cdn|dns|gslb|ingress|lb/.test(type)) kind = 'balancer';
+      else if (/vector|embedding|faiss|pinecone/.test(type)) kind = 'vector';
+      else if (/ai|llm|model|ml|inference/.test(type)) kind = 'ai';
+      else if (/auth|iam|jwt|oauth/.test(type)) kind = 'auth';
+      else if (/analytics|olap|clickhouse|warehouse/.test(type)) kind = 'analytics';
+      else if (/ci|build|pipeline|deploy|devops/.test(type)) kind = 'ci';
+      else if (/firewall|waf/.test(type)) kind = 'firewall';
+      else if (/config|secret|flag|registry/.test(type)) kind = 'config';
+      else if (/db|database|postgres|mysql|mongo|elastic|redis|cache/.test(type)) kind = /cache|redis/.test(type) ? 'cache' : 'db';
       else if (/queue|kafka|rabbit|event/.test(type)) kind = 'queue';
       else if (/storage|s3|file/.test(type)) kind = 'storage';
       else if (/gateway|nginx|proxy/.test(type)) kind = 'gateway';
@@ -2453,17 +2635,28 @@
   $('#presetClose').addEventListener('click', closePresets);
   $('#presetModal').addEventListener('click', ev => { if (ev.target === $('#presetModal')) closePresets(); });
   if (window.ArchPresets && window.ArchPresets.presets.length) {
-    window.ArchPresets.presets.forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.id; o.textContent = p.name;
-      presetSel.appendChild(o);
-    });
+    const allPresets = window.ArchPresets.presets;
+    const archCount = allPresets.filter(p => p.category === 'architecture').length;
+    const procCount = allPresets.filter(p => p.category === 'process').length;
+    $('#presetHint').textContent = allPresets.length + ' вариантов: ' + archCount + ' архитектур и ' + procCount +
+      ' логических/событийных сценариев (сообщение → реакция → результат, Saga, retry/DLQ, инциденты, CI/CD).';
     const showPresetDesc = () => {
       const p = window.ArchPresets.get(presetSel.value);
       $('#presetDesc').textContent = p ? p.description : '';
     };
+    const fillPresets = () => {
+      const cat = $('#presetCategory').value;
+      presetSel.innerHTML = '';
+      allPresets.filter(p => cat === 'all' || (p.category || 'architecture') === cat).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.id; o.textContent = p.name;
+        presetSel.appendChild(o);
+      });
+      showPresetDesc();
+    };
+    $('#presetCategory').addEventListener('change', fillPresets);
     presetSel.addEventListener('change', showPresetDesc);
-    showPresetDesc();
+    fillPresets();
 
     $('#presetLoad').addEventListener('click', () => {
       const p = window.ArchPresets.get(presetSel.value);

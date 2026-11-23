@@ -28,7 +28,7 @@
 | `build_ai_prompt` | `path` / `schema`, `variant` | Промпт `combo` (PNG + Mermaid + JSON), `png`, `mermaid`, `json` или `prose`. |
 | `make_gist_files` | `path` / `schema` | Набор файлов для GitHub Gist. |
 | `push_gist` | `path` / `schema`, `token`?, `gistId`?, `public`? | Создать/обновить Gist (токен из аргумента или `GITHUB_TOKEN`). |
-| `list_presets` | — | Список пресетов с тегами и счётчиками. |
+| `list_presets` | `category`? (`architecture` / `process`) | Список из 29 пресетов с категориями, тегами и счётчиками. |
 | `get_preset` | `id` | Полное описание пресета + JSON-схема + валидация. |
 | `preset_export` | `id`, `format`, `variant` | Экспорт пресета в `schema` / `mermaid` / `prompt` / `gist` / `all`. |
 
@@ -73,4 +73,5 @@
 - «Нарисуй архитектуру проекта в `../simple-service` и импортируй её в доску» → `import_project` → записать `output` → открыть `index.html` → «📂 Импорт».
 - «Проверь схему из `architecture-schema.json` перед коммитом» → `validate_c4`.
 - «Сделай промпт для Qwen по текущему проекту» → `build_ai_prompt` с `variant: "combo"`.
-- «Покажи, как выглядит микросервисная архитектура» → `list_presets` → `preset_export` с `format: "all"`.
+- «Покажи, как выглядит микросервисная архитектура» → `list_presets` с `category: "architecture"` → `preset_export` с `format: "all"`.
+- «Нарисуй диаграмму: пришло сообщение, обработчик среагировал в CRM, результат ушёл пользователю» → `list_presets` с `category: "process"` → `get_preset` для `flow-message` → `preset_export`. Другие готовые процессы: `flow-webhook`, `flow-saga`, `flow-outbox`, `flow-retry-dlq`, `flow-incident`, `flow-cicd`, `flow-cron`.

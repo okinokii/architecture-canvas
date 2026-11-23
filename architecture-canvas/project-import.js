@@ -31,8 +31,17 @@ const INFRA = [
   { key: 'elastic', re: /(elastic|opensearch)/i, label: 'Elasticsearch', description: 'Поиск и аналитика', kind: 'data' },
   { key: 'storage', re: /(minio|@aws-sdk\/client-s3|aws-sdk|boto3|s3)/i, label: 'Object Storage (S3)', description: 'Хранилище файлов', kind: 'data' },
   { key: 'nginx', re: /(^|[^a-z])nginx([^a-z]|$)/i, label: 'Nginx', description: 'Обратный прокси и статик', kind: 'sync' },
-  { key: 'grpc', re: /(grpc|@grpc)/i, label: 'gRPC API', description: 'Синхронный gRPC-вызов', kind: 'sync' }
+  { key: 'grpc', re: /(grpc|@grpc)/i, label: 'gRPC API', description: 'Синхронный gRPC-вызов', kind: 'sync' },
+  { key: 'observability', re: /(prometheus|grafana|loki|jaeger|opentelemetry|@opentelemetry|\botel\b|sentry)/i, label: 'Мониторинг / Наблюдаемость', description: 'Метрики, логи и трейсы', kind: 'monitoring' },
+  { key: 'scheduler', re: /(node-cron|\bcron\b|bullmq|agenda|quartz)/i, label: 'Планировщик задач', description: 'Периодические и фоновые задачи', kind: 'scheduler' }
 ];
+function infraType(kind) {
+  if (kind === 'event') return 'queue';
+  if (kind === 'data') return 'db';
+  if (kind === 'monitoring') return 'monitoring';
+  if (kind === 'scheduler') return 'scheduler';
+  return 'gateway';
+}
 const FRAMEWORKS = [
   /next\.?js|^next$/i, /nestjs/i, /express/i, /fastify/i, /vue/i, /react/i,
   /django/i, /flask/i, /fastapi/i, /spring/i, /gin-gonic/i, /laravel/i
@@ -219,7 +228,7 @@ function importProject(args) {
     INFRA.forEach(infra => {
       if (!names.some(n => infra.re.test(n))) return;
       const infraId = addNode('infra:' + infra.key, {
-        label: infra.label, type: infra.kind === 'event' ? 'queue' : infra.kind === 'data' ? 'db' : 'gateway',
+        label: infra.label, type: infraType(infra.kind),
         description: infra.description, zone: 'Инфраструктура', source: 'зависимости package.json'
       }).id;
       addEdge(id, infraId, 'использует', infra.kind);
@@ -242,7 +251,7 @@ function importProject(args) {
     INFRA.forEach(infra => {
       if (!infra.re.test(text)) return;
       const infraId = addNode('infra:' + infra.key, {
-        label: infra.label, type: infra.kind === 'event' ? 'queue' : infra.kind === 'data' ? 'db' : 'gateway',
+        label: infra.label, type: infraType(infra.kind),
         description: infra.description, zone: 'Инфраструктура', source: 'манифест ' + base
       }).id;
       addEdge(id, infraId, 'использует', infra.kind);
@@ -313,7 +322,7 @@ function importProject(args) {
     const infra = INFRA.find(i => i.re.test(service.image));
     const key = infra ? 'infra:' + infra.key : 'compose:' + service.name;
     const id = addNode(key, infra ? {
-      label: infra.label, type: infra.kind === 'event' ? 'queue' : infra.kind === 'data' ? 'db' : 'gateway',
+      label: infra.label, type: infraType(infra.kind),
       description: infra.description, zone: 'Инфраструктура', source: service.image
     } : {
       label: pretty(service.name), type: 'service',
