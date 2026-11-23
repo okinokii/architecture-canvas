@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Основа: Lucide "workflow" (ISC license, https://lucide.dev), масштаб 3x + отступ 18dp
+     для безопасной зоны адаптивной иконки (108x108 viewport). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M33,27H45A6,6 0 0 1 51,33V45A6,6 0 0 1 45,51H33A6,6 0 0 1 27,45V33A6,6 0 0 1 33,27Z"
+        android:fillColor="#29C7A3"
+        android:strokeColor="#E7EDFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M39,51V63A6,6 0 0 0 45,69H57"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#E7EDFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M63,57H75A6,6 0 0 1 81,63V75A6,6 0 0 1 75,81H63A6,6 0 0 1 57,75V63A6,6 0 0 1 63,57Z"
+        android:fillColor="#5B8CFF"
+        android:strokeColor="#E7EDFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

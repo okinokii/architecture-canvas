@@ -9,9 +9,9 @@ android/
 ├── app/
 │   ├── build.gradle               # AGP, compileSdk 35, копирование веб-ассетов
 │   └── src/main/
-│       ├── AndroidManifest.xml    # полноэкранная Activity без ActionBar
+│       ├── AndroidManifest.xml    # полноэкранная Activity, иконка launcher
 │       ├── java/.../MainActivity.java
-│       ├── res/values/            # имя приложения и тема
+│       ├── res/                   # имя, тема, иконка (mipmap/drawable/values)
 │       └── assets/                # создаётся при сборке из architecture-canvas/
 ├── build.gradle                   # версия Android Gradle Plugin
 ├── gradle.properties
@@ -52,6 +52,7 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 - `useWideViewPort` + `viewport` из HTML — корректный масштаб на экране Tab S8 Ultra (2560×1600).
 - Полноэкранный режим с учётом `displayCutout`, системная кнопка «Назад» сначала закрывает модальные окна/возвращает WebView назад.
 - В доске включены крупные цели касания, авто-масштаб интерфейса 125 % на больших сенсорных экранах, palm rejection и поддержка нажима/наклона S Pen.
+- Иконка приложения — свободный Lucide `workflow` (ISC): адаптивная иконка для Android 8+ и PNG-заглушки для старых версий.
 - Web Speech API (диктовка) в системном WebView может отсутствовать — для неё используйте Chrome/Edge.
 
 Подпись для Google Play не настроена намеренно: APK предназначен для прямой установки на свой планшет. При необходимости замените `signingConfig signingConfigs.debug` в `app/build.gradle` на свой keystore.

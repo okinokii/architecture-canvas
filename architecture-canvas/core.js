@@ -24,6 +24,22 @@
     return /^[A-Za-z][A-Za-z0-9_-]*$/.test(String(id || '')) ? String(id) : 'n' + (i + 1);
   }
 
+  /* Типы связей. Один источник истины для доски, MCP и промптов. */
+  const EDGE_KINDS = {
+    sync:       { label: 'Синхронная',   short: 'SYNC',  color: '#5b8cff', dash: [], async: false },
+    async:      { label: 'Асинхронная',  short: 'ASYNC', color: '#f472b6', dash: [6, 5], async: true },
+    data:       { label: 'Поток данных', short: 'DATA',  color: '#29c7a3', dash: [2, 4], async: false },
+    auth:       { label: 'Авторизация',  short: 'AUTH',  color: '#c084fc', dash: [9, 4], async: false },
+    event:      { label: 'Событие',      short: 'EVT',   color: '#ffb454', dash: [12, 5], async: true },
+    dependency: { label: 'Зависимость',  short: 'DEP',   color: '#94a3b8', dash: [3, 5], async: false }
+  };
+
+  /* Старые схемы не имеют поля kind: сохраняем их поведение через dashed. */
+  function edgeKind(edge) {
+    if (edge && EDGE_KINDS[edge.kind]) return edge.kind;
+    return edge && edge.async ? 'async' : 'sync';
+  }
+
   function validateC4(schema) {
     const out = [];
     const add = (severity, code, message, ref) => out.push(Object.assign({ severity, code, message }, ref || {}));
@@ -45,15 +61,77 @@
 
     const labels = new Set(nodes.map(n => String((n && n.label) || '')));
     const known = v => seen.has(String(v)) || labels.has(String(v));
+    const edgeKinds = new Set(Object.keys(EDGE_KINDS));
+    const pairCounts = new Map();
+    const dep = [];
     edges.forEach((e, i) => {
       const ref = { edge: i + 1 };
       const from = String((e && e.fromLabel) || (e && e.from) || '?');
       const to = String((e && e.toLabel) || (e && e.to) || '?');
-      if (!known(e && e.from) || !known(e && e.to)) {
+      const kind = edgeKind(e);
+      const attached = (e && typeof e.fromAttached === 'boolean' && typeof e.toAttached === 'boolean')
+        ? { from: e.fromAttached, to: e.toAttached }
+        : { from: known(e && e.from) && from !== '?', to: known(e && e.to) && to !== '?' };
+
+      if (!attached.from || !attached.to) {
+        const loose = [!attached.from ? 'начало' : '', !attached.to ? 'конец' : ''].filter(Boolean).join(' и ');
+        add('error', 'DANGLING_EDGE', 'Связь висит в воздухе: не привязан' + (loose === 'начало и конец' ? 'ы оба конца' : ' ' + loose) + ': ' + from + ' → ' + to, ref);
+      } else if (!known(e && e.from) || !known(e && e.to)) {
         add('error', 'BROKEN_EDGE', 'Связь ссылается на несуществующий блок: ' + from + ' → ' + to, ref);
+      }
+      if (from === to && from !== '?') add('error', 'SELF_LOOP', 'Связь из блока в самого себя: ' + from, ref);
+      if (!edgeKinds.has(kind)) add('error', 'UNKNOWN_EDGE_KIND', 'Неизвестный тип связи: ' + String(kind), ref);
+      if (EDGE_KINDS[kind] && !!e.async !== EDGE_KINDS[kind].async) {
+        add('error', 'KIND_ASYNC_MISMATCH', 'Противоречие: тип «' + EDGE_KINDS[kind].label + '» не совпадает с флагом async (' + (e.async ? 'включён' : 'выключен') + '): ' + from + ' → ' + to, ref);
+      }
+      const text = String((e && e.label) || '').toLowerCase();
+      if (kind === 'sync' && /асинхр|event|очеред|kafka|rabbit|pub\/sub/.test(text)) {
+        add('warning', 'LABEL_KIND_CONFLICT', 'Подпись говорит об асинхронности, а тип связи — синхронная: ' + from + ' → ' + to, ref);
+      }
+      if ((kind === 'async' || kind === 'event') && /^\s*(rest|grpc|https?|sql|синхр|sync)/i.test(text)) {
+        add('warning', 'LABEL_KIND_CONFLICT', 'Подпись говорит о синхронном вызове, а тип связи асинхронный: ' + from + ' → ' + to, ref);
       }
       if (!String((e && e.label) || '').trim()) {
         add('warning', 'UNLABELED_EDGE', 'Связь без подписи: ' + from + ' → ' + to + ' (уточните протокол или тип данных)', ref);
+      }
+      const pairKey = from + '\u0000' + to + '\u0000' + kind;
+      pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
+      if (kind === 'dependency' && attached.from && attached.to) dep.push([from, to]);
+    });
+    pairCounts.forEach((count, key) => {
+      if (count > 1) {
+        const parts = key.split('\u0000');
+        const label = EDGE_KINDS[parts[2]] ? EDGE_KINDS[parts[2]].label : parts[2];
+        add('warning', 'DUPLICATE_EDGE', 'Дублирующая связь ' + parts[0] + ' → ' + parts[1] + ' (' + label + ')');
+      }
+    });
+    // Цикл по явным зависимостям — реальное противоречие порядка вызовов.
+    const depAdj = new Map();
+    dep.forEach(([a, b]) => { if (!depAdj.has(a)) depAdj.set(a, []); depAdj.get(a).push(b); });
+    const visit = new Map();
+    const stack = [];
+    function dfs(v) {
+      visit.set(v, 1); stack.push(v);
+      for (const w of depAdj.get(v) || []) {
+        if (visit.get(w) === 1) {
+          const cycle = stack.slice(stack.indexOf(w)).concat(w).join(' → ');
+          add('error', 'DEPENDENCY_CYCLE', 'Цикл зависимостей: ' + cycle);
+        } else if (!visit.get(w)) dfs(w);
+      }
+      stack.pop(); visit.set(v, 2);
+    }
+    dep.forEach(([a]) => { if (!visit.get(a)) dfs(a); });
+
+    const connected = new Set();
+    edges.forEach(e => {
+      if (e && known(e.from) && known(e.to)) { connected.add(String(e.from)); connected.add(String(e.to)); }
+      if (e && known(e.fromLabel) && known(e.toLabel)) { connected.add(String(e.fromLabel)); connected.add(String(e.toLabel)); }
+    });
+    nodes.forEach((n, i) => {
+      const id = String((n && n.id) || 'n' + (i + 1));
+      const label = String((n && n.label) || '');
+      if (!connected.has(id) && !connected.has(label)) {
+        add('warning', 'ISOLATED_NODE', 'Блок «' + (label || id) + '» не связан с другими блоками', { node: id });
       }
     });
 
@@ -103,9 +181,11 @@
         : (byLabel.has(fromRaw) ? byLabel.get(fromRaw) : (byLabel.get(String((e && e.fromLabel) || '')) || 'unknown'));
       const b = byId.has(toRaw) ? toRaw
         : (byLabel.has(toRaw) ? byLabel.get(toRaw) : (byLabel.get(String((e && e.toLabel) || '')) || 'unknown'));
-      const ar = e && e.async ? '-.->' : '-->';
-      const label = esc(e && e.label);
-      lines.push('  ' + a + ' ' + (label ? ar + '|' + label + '|' : ar) + ' ' + b);
+      const kind = edgeKind(e);
+      const ar = EDGE_KINDS[kind].async ? '-.->' : '-->';
+      const text = esc(e && e.label);
+      const label = text ? EDGE_KINDS[kind].short + ': ' + text : EDGE_KINDS[kind].short;
+      lines.push('  ' + a + ' ' + ar + '|' + label + '| ' + b);
     });
     if (lines.some(l => l.includes('unknown'))) lines.splice(1, 0, '  unknown["не определено на схеме"]');
     return lines.join('\n');
@@ -128,7 +208,10 @@
         to: String((e && e.to) || ''),
         toLabel: String((e && e.toLabel) || ''),
         label: String((e && e.label) || ''),
-        async: !!(e && e.async)
+        kind: edgeKind(e),
+        async: EDGE_KINDS[edgeKind(e)].async,
+        fromAttached: e && typeof e.fromAttached === 'boolean' ? e.fromAttached : true,
+        toAttached: e && typeof e.toAttached === 'boolean' ? e.toAttached : true
       })),
       notes: Array.isArray(schema && schema.notes) ? schema.notes : []
     };
@@ -145,8 +228,8 @@
 
   const TASK = [
     'ЗАДАНИЕ',
-    '0. Сначала выведи строго JSON извлечения: {"entities":[{"id","label","description"}],"relations":[{"from","to","label"}]} — только то, что реально присутствует в схеме/данных.',
-    '1. Опиши архитектуру: слои, компоненты, синхронные и асинхронные потоки данных.',
+    '0. Сначала выведи строго JSON извлечения: {"entities":[{"id","label","description"}],"relations":[{"from","to","label","kind","attached"}]} — только то, что реально присутствует в схеме/данных.',
+    '1. Опиши архитектуру: слои, компоненты и типы связей (SYNC, ASYNC, DATA, AUTH, EVT, DEP); отдельно отметь висячие связи и противоречия из отчёта валидации.',
     '2. Отметь сильные стороны и узкие места: точки отказа, узкие места производительности, безопасность, масштабируемость.',
     '3. Предложи улучшения с приоритетами P0/P1/P2 и укажи, какие компоненты и связи меняются.',
     '4. В конце выведи уточнённую архитектуру в Mermaid flowchart, сохранив обозначения исходной схемы.'
@@ -158,9 +241,20 @@
     s.nodes.forEach((n, i) => L.push((i + 1) + '. ' + n.label + (n.description ? ' — ' + n.description : '') + (n.zone ? ' [зона: ' + n.zone + ']' : '') + '.'));
     if (s.edges.length) {
       L.push('', 'Направленные связи:');
-      s.edges.forEach(e => L.push('- ' + (e.fromLabel || e.from) + ' → ' + (e.toLabel || e.to) + (e.label ? ' с подписью «' + e.label + '»' : '') + (e.async ? ' (асинхронно)' : '') + '.'));
+      s.edges.forEach(e => {
+        const k = EDGE_KINDS[e.kind] || EDGE_KINDS.sync;
+        const loose = e.fromAttached === false || e.toAttached === false ? ' [ВИСИТ В ВОЗДУХЕ]' : '';
+        L.push('- ' + (e.fromLabel || e.from) + ' → ' + (e.toLabel || e.to) +
+          ' [' + k.short + ' · ' + k.label + ']' +
+          (e.label ? ' с подписью «' + e.label + '»' : '') + loose + '.');
+      });
     }
     if (s.notes.length) { L.push('', 'Пояснения:'); s.notes.forEach(n => L.push('- ' + String(n))); }
+    const report = validateC4(schema);
+    if (report.counts.error || report.counts.warning) {
+      L.push('', 'Замечания валидации:');
+      report.warnings.forEach(w => L.push('- [' + w.severity + '] ' + w.code + ': ' + w.message));
+    }
     return L.join('\n');
   }
 
@@ -208,5 +302,5 @@
     };
   }
 
-  return { validateC4, toMermaid, buildPrompt, compactSchema, makeGistFiles, prose };
+  return { EDGE_KINDS, edgeKind, validateC4, toMermaid, buildPrompt, compactSchema, makeGistFiles, prose };
 });

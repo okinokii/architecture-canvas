@@ -392,6 +392,18 @@
     </div>
 
     <div class="sec">
+      <h2>Связи блоков</h2>
+      <div class="hint">Новая стрелка прилипает к ближайшему блоку. Зелёная галочка — оба конца привязаны, красный крестик — связь висит в воздухе. Двойной клик по стрелке меняет подпись и тип.</div>
+      <div class="row" style="margin-top:8px">
+        <label style="min-width:auto;color:var(--muted)">Тип связи</label>
+        <select id="edgeKind"></select>
+      </div>
+      <div class="hint" id="edgeKindHint" style="margin-top:6px"></div>
+      <div class="hint" id="linkStatus" style="margin-top:7px">Связей пока нет</div>
+      <button class="btn" id="btnSnapEdges" style="width:100%;margin-top:8px">🔗 Привязать висячие концы</button>
+    </div>
+
+    <div class="sec">
       <h2>Блоки архитектуры</h2>
       <div class="palette" id="palette"></div>
       <div class="hint" style="margin-top:8px">Клик по блоку → текстовая метка на холсте с открытым редактором. Двойной клик — изменить текст.</div>
@@ -407,7 +419,7 @@
 
     <div class="sec">
       <h2>Пресеты архитектур</h2>
-      <div class="hint">Классические построения: слоистый монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless.</div>
+      <div class="hint">13 вариантов: классические (монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless) и современные (модульный монолит, Clean, BFF, стриминг, микрофронтенды, service mesh).</div>
       <select id="presetSelect" style="margin-top:8px"></select>
       <div class="hint" id="presetDesc" style="margin-top:7px"></div>
       <div class="row" style="margin-top:8px">
@@ -452,8 +464,9 @@
     </div>
 
     <div class="sec">
-      <h2>C4-валидация</h2>
-      <div class="hint" id="c4Status">Не проверялось</div>
+      <h2>C4-валидация и целостность</h2>
+      <div class="hint">Проверяет висячие концы, петли, дубли, противоречия типов, циклы зависимостей и оторванные блоки.</div>
+      <div class="hint" id="c4Status" style="margin-top:7px">Не проверялось</div>
       <button class="btn" id="btnValidate" style="width:100%;margin-top:8px">🔎 Проверить схему</button>
     </div>
 
@@ -505,6 +518,7 @@
 <div id="editor" class="editor hidden">
   <input id="editorSub" class="hidden" placeholder="Описание (необязательно)" style="width:100%;margin-bottom:7px;background:#0d1428;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px;outline:none">
   <textarea id="editorInput" placeholder="Название блока / текст"></textarea>
+  <select id="editorKind" class="hidden" title="Тип связи" style="margin-top:7px"></select>
   <div class="microw">
     <select id="dictationLang" title="Язык диктовки"></select>
     <button class="btn" id="micTitle" title="Диктовать название (Ctrl+M)">🎤 Название</button>
@@ -535,7 +549,7 @@
 
 <div id="c4Modal" class="hidden">
   <div class="box">
-    <h3>Результат C4-валидации</h3>
+    <h3>Результат валидации схемы и связей</h3>
     <pre id="c4Report" style="flex:1;overflow:auto;background:#0d1428;color:#dbe5ff;border:1px solid var(--line);border-radius:9px;padding:12px;font:12px/1.55 Consolas,monospace;white-space:pre-wrap"></pre>
     <div class="ma"><button class="btn" id="c4Close">Закрыть</button></div>
   </div>
@@ -577,6 +591,21 @@
     external: { label: 'Внешний API', sub: '3rd party',      color: '#94a3b8' }
   };
 
+  /* Типы связей берём из ядра; локальный fallback нужен только если core.js не загрузился. */
+  const EDGE_KINDS = (window.ArchCore && window.ArchCore.EDGE_KINDS) || {
+    sync: { label: 'Синхронная', short: 'SYNC', color: '#5b8cff', dash: [] },
+    async: { label: 'Асинхронная', short: 'ASYNC', color: '#f472b6', dash: [6, 5] },
+    data: { label: 'Поток данных', short: 'DATA', color: '#29c7a3', dash: [2, 4] },
+    auth: { label: 'Авторизация', short: 'AUTH', color: '#c084fc', dash: [9, 4] },
+    event: { label: 'Событие', short: 'EVT', color: '#ffb454', dash: [12, 5] },
+    dependency: { label: 'Зависимость', short: 'DEP', color: '#94a3b8', dash: [3, 5] }
+  };
+  function edgeKind(e) {
+    if (e && EDGE_KINDS[e.kind]) return e.kind;
+    return e && (e.dashed || e.async) ? 'async' : 'sync';
+  }
+  function kindIsAsync(kind) { return !!(EDGE_KINDS[kind] && EDGE_KINDS[kind].async); }
+
   const ZONE = { fill: 'rgba(91,140,255,.035)', stroke: 'rgba(91,140,255,.28)' };
 
   function zone(x, y, w, h, title) {
@@ -585,8 +614,13 @@
   function block(id, x, y, w, h, label, sub, kind, color) {
     return { type: 'block', id, x, y, w, h, label, sub, kind, color: color || KINDS[kind].color };
   }
-  function arrow(x1, y1, x2, y2, fromLabel, toLabel, note, dashed) {
-    return { type: 'arrow', x1, y1, x2, y2, fromLabel, toLabel, note: note || '', dashed: !!dashed, color: '#6f86b8', width: 2 };
+  function arrow(x1, y1, x2, y2, fromLabel, toLabel, note, dashed, kind) {
+    return {
+      type: 'arrow', x1, y1, x2, y2, fromLabel, toLabel,
+      note: note || '', dashed: !!dashed,
+      kind: kind || (dashed ? 'async' : 'sync'),
+      color: '#6f86b8', width: 2
+    };
   }
 
   function buildTemplate() {
@@ -666,6 +700,33 @@
 
   const AUTOSAVE_KEY = 'archcanvas.autosave.v1';
   const VERSIONS_KEY = 'archcanvas.versions.v1';
+  const EDGE_KIND_KEY = 'archcanvas.edgeKind';
+  const savedEdgeKind = localStorage.getItem(EDGE_KIND_KEY);
+  let currentEdgeKind = EDGE_KINDS[savedEdgeKind] ? savedEdgeKind : 'sync';
+
+  Object.keys(EDGE_KINDS).forEach(kind => {
+    [$('#edgeKind'), $('#editorKind')].forEach(sel => {
+      if (!sel) return;
+      const o = document.createElement('option');
+      o.value = kind;
+      o.textContent = EDGE_KINDS[kind].label + ' · ' + EDGE_KINDS[kind].short;
+      sel.appendChild(o);
+    });
+  });
+  function updateEdgeKindHint() {
+    const info = EDGE_KINDS[currentEdgeKind];
+    $('#edgeKindHint').textContent = info
+      ? 'Обозначение: ' + info.short + ' · ' + info.label + (info.async ? ' (пунктир, асинхронно)' : '')
+      : '';
+  }
+  $('#edgeKind').value = currentEdgeKind;
+  $('#edgeKind').addEventListener('change', e => {
+    currentEdgeKind = EDGE_KINDS[e.target.value] ? e.target.value : 'sync';
+    localStorage.setItem(EDGE_KIND_KEY, currentEdgeKind);
+    updateEdgeKindHint();
+    $('#status').textContent = 'Тип новой связи: ' + EDGE_KINDS[currentEdgeKind].label;
+  });
+  updateEdgeKindHint();
 
   function lsGet(key, fallback) {
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
@@ -889,14 +950,124 @@
     c.restore();
   }
 
-  function drawArrow(c, e, selected) {
+  /* ---------- Привязка и статус связей ---------- */
+  function allBlocks() {
+    return (state.showTemplate ? state.template.filter(e => e.type === 'block') : [])
+      .concat(state.elements.filter(e => e.type === 'block'));
+  }
+  function collectArrows() {
+    const arrows = [];
+    if (state.showTemplate) arrows.push(...state.template.filter(e => e.type === 'arrow'));
+    arrows.push(...state.elements.filter(e => e.type === 'arrow'));
+    return arrows;
+  }
+  function endpointPoint(e, which) {
+    return which === 'from' ? { x: e.x1, y: e.y1 } : { x: e.x2, y: e.y2 };
+  }
+  function distanceToBlock(p, b) {
+    const cx = Math.max(b.x, Math.min(p.x, b.x + b.w));
+    const cy = Math.max(b.y, Math.min(p.y, b.y + b.h));
+    return Math.hypot(p.x - cx, p.y - cy);
+  }
+  function endpointRef(e, which) {
+    const blocks = allBlocks();
+    const id = e[which + 'Id'], label = e[which + 'Label'];
+    if (id) { const b = blocks.find(x => x.id === id); if (b) return b; }
+    if (label) { const b = blocks.find(x => x.label === label); if (b) return b; }
+    return null;
+  }
+  function edgeStatus(e, tolerance) {
+    const tol = typeof tolerance === 'number' ? tolerance : 30;
+    const blocks = allBlocks();
+    const out = { from: null, to: null, fromAttached: false, toAttached: false, ok: false };
+    ['from', 'to'].forEach(which => {
+      const p = endpointPoint(e, which);
+      let b = endpointRef(e, which);
+      let attached = b ? distanceToBlock(p, b) <= tol : false;
+      if (!attached) {
+        let best = null, bd = Infinity;
+        blocks.forEach(candidate => {
+          const d = distanceToBlock(p, candidate);
+          if (d < bd) { bd = d; best = candidate; }
+        });
+        if (best && bd <= tol) { b = best; attached = true; }
+      }
+      out[which] = attached ? b : null;
+      out[which + 'Attached'] = attached;
+    });
+    out.ok = out.fromAttached && out.toAttached;
+    return out;
+  }
+  function snapEndpoint(e, which, tolerance, exclude) {
+    const tol = typeof tolerance === 'number' ? tolerance : 34 / state.view.scale;
+    const p = endpointPoint(e, which);
+    let best = null, bd = Infinity;
+    allBlocks().forEach(b => {
+      if (exclude && b === exclude) return;
+      const d = distanceToBlock(p, b);
+      if (d < bd) { bd = d; best = b; }
+    });
+    if (!best || bd > tol) return false;
+    const cx = best.x + best.w / 2, cy = best.y + best.h / 2;
+    const dx = p.x - cx, dy = p.y - cy;
+    const sx = Math.abs(dx) > 0.0001 ? (best.w / 2) / Math.abs(dx) : Infinity;
+    const sy = Math.abs(dy) > 0.0001 ? (best.h / 2) / Math.abs(dy) : Infinity;
+    const k = Math.min(sx, sy);
+    let bx, by;
+    if (Number.isFinite(k)) { bx = cx + dx * k; by = cy + dy * k; }
+    else { bx = best.x + best.w; by = cy; }
+    if (which === 'from') { e.x1 = bx; e.y1 = by; } else { e.x2 = bx; e.y2 = by; }
+    e[which + 'Id'] = best.id;
+    e[which + 'Label'] = best.label;
+    return true;
+  }
+  function updateLinkStatus() {
+    const el = $('#linkStatus');
+    if (!el) return;
+    const arrows = collectArrows();
+    if (!arrows.length) { el.textContent = 'Связей пока нет'; return; }
+    let loose = 0;
+    arrows.forEach(a => {
+      const st = edgeStatus(a);
+      if (!st.fromAttached) loose++;
+      if (!st.toAttached) loose++;
+    });
+    el.textContent = loose
+      ? `${arrows.length} связей · висячих концов: ${loose}`
+      : `${arrows.length} связей · все концы привязаны ✓`;
+    el.style.color = loose ? '#ff9b9b' : '#7ee6c1';
+  }
+
+  function drawEndpoint(c, p, attached, color) {
     c.save();
-    c.strokeStyle = selected ? '#ffffff' : e.color;
-    c.fillStyle = selected ? '#ffffff' : e.color;
-    c.lineWidth = selected ? e.width + 1.5 : e.width;
-    if (e.dashed) c.setLineDash([6, 5]);
+    c.lineWidth = 2;
+    c.strokeStyle = attached ? '#29c7a3' : '#ff6b6b';
+    c.fillStyle = attached ? '#29c7a3' : 'rgba(255,107,107,.18)';
+    c.beginPath(); c.arc(p.x, p.y, 5, 0, Math.PI * 2); c.fill(); c.stroke();
+    if (!attached) {
+      c.strokeStyle = '#fff'; c.lineWidth = 1.6;
+      c.beginPath();
+      c.moveTo(p.x - 2.4, p.y - 2.4); c.lineTo(p.x + 2.4, p.y + 2.4);
+      c.moveTo(p.x + 2.4, p.y - 2.4); c.lineTo(p.x - 2.4, p.y + 2.4);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  function drawArrow(c, e, selected) {
+    const st = edgeStatus(e);
+    const kind = edgeKind(e);
+    const info = EDGE_KINDS[kind] || EDGE_KINDS.sync;
+    const bad = !st.ok;
+    const color = bad ? '#ff6b6b' : (selected ? '#ffffff' : info.color);
+    c.save();
+    c.strokeStyle = color;
+    c.fillStyle = color;
+    c.lineWidth = selected ? (e.width || 2) + 1.5 : (e.width || 2);
+    const dash = bad ? [3, 4] : info.dash;
+    if (dash && dash.length) c.setLineDash(dash);
     const ang = Math.atan2(e.y2 - e.y1, e.x2 - e.x1);
-    const len = 10 + e.width;
+    const len = 10 + (e.width || 2);
     c.beginPath();
     c.moveTo(e.x1, e.y1);
     c.lineTo(e.x2 - Math.cos(ang) * len * .6, e.y2 - Math.sin(ang) * len * .6);
@@ -907,15 +1078,38 @@
     c.lineTo(e.x2 - Math.cos(ang - .42) * len, e.y2 - Math.sin(ang - .42) * len);
     c.lineTo(e.x2 - Math.cos(ang + .42) * len, e.y2 - Math.sin(ang + .42) * len);
     c.closePath(); c.fill();
+
+    drawEndpoint(c, { x: e.x1, y: e.y1 }, st.fromAttached, color);
+    drawEndpoint(c, { x: e.x2, y: e.y2 }, st.toAttached, color);
+
+    const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
     if (e.note) {
       c.font = '11px Segoe UI, sans-serif';
-      const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
       const tw = c.measureText(e.note).width;
       c.fillStyle = 'rgba(13,20,40,.9)';
-      c.fillRect(mx - tw / 2 - 4, my - 15, tw + 8, 15);
-      c.fillStyle = '#9fb0d4';
-      c.fillText(e.note, mx - tw / 2, my - 4);
+      c.fillRect(mx - tw / 2 - 4, my - 17, tw + 8, 15);
+      c.fillStyle = bad ? '#ff9b9b' : '#9fb0d4';
+      c.fillText(e.note, mx - tw / 2, my - 6);
     }
+    // Плашка типа связи: SYNC / ASYNC / DATA / AUTH / EVT / DEP.
+    c.font = 'bold 10px Segoe UI, sans-serif';
+    const tag = info.short, tw = c.measureText(tag).width;
+    const ty = my + (e.note ? 8 : -1);
+    c.fillStyle = bad ? 'rgba(255,107,107,.18)' : hexToRgba(info.color, .22);
+    c.strokeStyle = color; c.lineWidth = 1;
+    roundRectPath(c, mx - tw / 2 - 5, ty - 10, tw + 10, 14, 5); c.fill(); c.stroke();
+    c.fillStyle = color; c.fillText(tag, mx - tw / 2, ty);
+
+    // Зелёная галочка у начала связи = оба конца надёжно привязаны.
+    const bx = e.x1 + (e.x2 - e.x1) * .22, by = e.y1 + (e.y2 - e.y1) * .22;
+    c.beginPath(); c.arc(bx, by, 7.5, 0, Math.PI * 2);
+    c.fillStyle = bad ? 'rgba(255,107,107,.92)' : '#29c7a3'; c.fill();
+    c.strokeStyle = '#0d1428'; c.lineWidth = 1.5; c.stroke();
+    c.strokeStyle = '#fff'; c.lineWidth = 1.7; c.lineCap = 'round';
+    c.beginPath();
+    if (bad) { c.moveTo(bx, by - 3.2); c.lineTo(bx, by + 1.4); c.moveTo(bx, by + 3.4); c.lineTo(bx, by + 3.6); }
+    else { c.moveTo(bx - 3.2, by); c.lineTo(bx - .8, by + 2.6); c.lineTo(bx + 3.4, by - 2.8); }
+    c.stroke();
     c.restore();
   }
 
@@ -1065,6 +1259,7 @@
     drawScene(ctx, state.view, cssW, cssH, dpr);
     $('#zoomLabel').textContent = Math.round(state.view.scale * 100) + '%';
     $('#countLabel').textContent = 'элементов: ' + state.elements.length;
+    updateLinkStatus();
     scheduleAutosave();
   }
 
@@ -1116,12 +1311,14 @@
   }
 
   function openEditor(clientX, clientY, initial, multiline, cb, opts = {}) {
-    const ed = $('#editor'), inp = $('#editorInput'), sub = $('#editorSub');
+    const ed = $('#editor'), inp = $('#editorInput'), sub = $('#editorSub'), kindSel = $('#editorKind');
     state.editor = { cb, multiline, withSub: !!opts.withSub };
     inp.value = initial || '';
     inp.style.minHeight = multiline ? '90px' : '42px';
     sub.value = opts.sub || '';
     sub.classList.toggle('hidden', !opts.withSub);
+    kindSel.classList.toggle('hidden', !opts.kind);
+    if (opts.kind) kindSel.value = EDGE_KINDS[opts.kind] ? opts.kind : 'sync';
     ed.classList.remove('hidden');
     dictStatus('');
     updateDictUI();
@@ -1136,7 +1333,7 @@
     if (!e) return;
     stopDictation();
     ed.classList.add('hidden'); state.editor = null;
-    if (commit) e.cb($('#editorInput').value.trim(), $('#editorSub').value.trim());
+    if (commit) e.cb($('#editorInput').value.trim(), $('#editorSub').value.trim(), $('#editorKind').value);
   }
 
   /* ---------- Диктовка в поля редактора (Web Speech API) ---------- */
@@ -1418,7 +1615,11 @@
     if (t === 'pen') {
       state.preview = { type: 'path', points: [p], color: state.color, width: state.width };
     } else if (t === 'line' || t === 'arrow') {
-      state.preview = { type: t, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: state.color, width: state.width, note: '' };
+      state.preview = {
+        type: t, x1: p.x, y1: p.y, x2: p.x, y2: p.y,
+        color: state.color, width: state.width, note: '',
+        kind: currentEdgeKind, dashed: kindIsAsync(currentEdgeKind)
+      };
     } else if (t === 'rect' || t === 'ellipse') {
       state.preview = { type: t, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: state.color, width: state.width };
     }
@@ -1504,8 +1705,16 @@
       if (d.mode === 'draw' && state.preview) {
         const pr = state.preview;
         const valid = pr.type === 'path' ? pr.points.length > 1 : Math.hypot(pr.x2 - pr.x1, pr.y2 - pr.y1) > 4 / state.view.scale;
-        if (valid) state.elements.push(pr);
-        else state.history.pop();
+        if (valid) {
+          if (pr.type === 'arrow') {
+            snapEndpoint(pr, 'from');
+            let st = edgeStatus(pr);
+            snapEndpoint(pr, 'to', 34 / state.view.scale, st.from);
+            st = edgeStatus(pr);
+            if (!st.fromAttached && st.to) snapEndpoint(pr, 'from', 34 / state.view.scale, st.to);
+          }
+          state.elements.push(pr);
+        } else state.history.pop();
         state.preview = null;
       }
       state.drag = null;
@@ -1533,7 +1742,12 @@
       });
     } else if (e.type === 'arrow') {
       snapshot();
-      openEditor(ev.clientX, ev.clientY, e.note || '', false, v => { e.note = v; render(); });
+      openEditor(ev.clientX, ev.clientY, e.note || '', false, (v, sub, kind) => {
+        e.note = v;
+        if (EDGE_KINDS[kind]) { e.kind = kind; e.dashed = kindIsAsync(kind); }
+        render();
+        toast('Связь: ' + EDGE_KINDS[edgeKind(e)].label);
+      }, { kind: edgeKind(e) });
     }
   });
 
@@ -1725,17 +1939,21 @@
       return best && bd < 300 ? best.label : null;
     }
 
-    const arrows = [];
-    if (state.showTemplate) arrows.push(...state.template.filter(e => e.type === 'arrow'));
-    arrows.push(...state.elements.filter(e => e.type === 'arrow'));
+    const arrows = collectArrows();
     const edges = arrows.map((a, i) => {
-      const from = a.fromLabel || nearestLabel(a.x1, a.y1) || '?';
-      const to = a.toLabel || nearestLabel(a.x2, a.y2) || '?';
+      const st = edgeStatus(a);
+      const from = st.from ? st.from.label : (a.fromLabel || nearestLabel(a.x1, a.y1) || '?');
+      const to = st.to ? st.to.label : (a.toLabel || nearestLabel(a.x2, a.y2) || '?');
+      const kind = edgeKind(a);
       return {
         id: 'e' + (i + 1), from, to,
-        fromId: byLabel.has(from) ? byLabel.get(from).nid : '?',
-        toId: byLabel.has(to) ? byLabel.get(to).nid : '?',
-        label: a.note || '', dashed: !!a.dashed
+        fromId: st.from ? (st.from.id || from) : (byLabel.has(from) ? byLabel.get(from).nid : '?'),
+        toId: st.to ? (st.to.id || to) : (byLabel.has(to) ? byLabel.get(to).nid : '?'),
+        label: a.note || '', kind,
+        dashed: kindIsAsync(kind),
+        fromAttached: st.fromAttached,
+        toAttached: st.toAttached,
+        status: st.ok ? 'ok' : 'dangling'
       };
     });
     const notes = state.elements
@@ -1775,10 +1993,13 @@
       lines.push('  unknown["не определено на схеме"]');
     }
     g.edges.forEach(e => {
-      const ar = e.dashed ? '-.->' : '-->';
+      const info = EDGE_KINDS[e.kind] || EDGE_KINDS.sync;
+      const ar = info.async ? '-.->' : '-->';
       const a = e.fromId === '?' ? 'unknown' : e.fromId;
       const b = e.toId === '?' ? 'unknown' : e.toId;
-      lines.push(`  ${a} ${e.label ? ar + '|' + mermaidEsc(e.label) + '|' : ar} ${b}`);
+      const text = mermaidEsc(e.label);
+      const label = text ? info.short + ': ' + text : info.short;
+      lines.push(`  ${a} ${ar}|${label}| ${b}`);
     });
     return lines.join('\n');
   }
@@ -1790,7 +2011,9 @@
         node: 'отдельный компонент системы',
         edge: 'направленная связь между компонентами',
         label: 'подпись на связи',
-        dashed: 'асинхронная / опциональная связь'
+        kind: 'тип связи: SYNC / ASYNC / DATA / AUTH / EVT / DEP',
+        dashed: 'асинхронная / опциональная связь',
+        attached: 'fromAttached/toAttached: false означает висячий конец стрелки'
       },
       zones: g.zones,
       nodes: g.nodes.map(n => ({
@@ -1800,7 +2023,9 @@
       })),
       edges: g.edges.map(e => ({
         from: e.fromId, fromLabel: e.from, to: e.toId, toLabel: e.to,
-        label: e.label, async: e.dashed
+        label: e.label, kind: e.kind, async: kindIsAsync(e.kind),
+        fromAttached: e.fromAttached, toAttached: e.toAttached,
+        status: e.status
       })),
       notes: g.notes
     };
@@ -1812,7 +2037,11 @@
     g.nodes.forEach((n, i) => L.push(`${i + 1}. ${n.label}${n.sub ? ' — ' + n.sub : ''}${n.zone ? ' [зона: ' + n.zone + ']' : ''}${n.manual ? ' [добавлено вручную]' : ''}.`));
     if (g.edges.length) {
       L.push('', 'Направленные связи:');
-      g.edges.forEach(e => L.push(`- ${e.from} → ${e.to}${e.label ? ' с подписью «' + e.label + '»' : ''}${e.dashed ? ' (асинхронно)' : ''}.`));
+      g.edges.forEach(e => {
+        const info = EDGE_KINDS[e.kind] || EDGE_KINDS.sync;
+        const loose = e.status === 'dangling' ? ' [ВИСИТ В ВОЗДУХЕ]' : '';
+        L.push(`- ${e.from} → ${e.to} [${info.short} · ${info.label}]${e.label ? ' с подписью «' + e.label + '»' : ''}${loose}.`);
+      });
     }
     if (g.notes.length) { L.push('', 'Пояснения:'); g.notes.forEach(n => L.push('- ' + n)); }
     return L.join('\n');
@@ -1996,9 +2225,12 @@
         const sign = Math.sign(ty - sy) || 1;
         y1 = sy + sign * s.h / 2; y2 = ty - sign * t.h / 2;
       }
+      const kind = edge.kind || (edge.async ? 'async' : 'sync');
       out.push({
-        type: 'arrow', x1, y1, x2, y2, fromLabel: a.label, toLabel: b.label,
-        note: edge.label || '', dashed: !!edge.async, color: '#6f86b8', width: 2
+        type: 'arrow', x1, y1, x2, y2,
+        fromLabel: a.label, toLabel: b.label, fromId: a.id, toId: b.id,
+        note: edge.label || '', kind, dashed: kindIsAsync(kind),
+        color: '#6f86b8', width: 2
       });
     });
     preset.notes.forEach(n => out.push({
@@ -2099,7 +2331,7 @@
       `[${w.severity.toUpperCase()}] ${w.code}: ${w.message}` +
       (w.node ? ` (блок ${w.node})` : '') + (w.edge ? ` (связь ${w.edge})` : ''));
     $('#c4Report').textContent = [
-      'Результат мягкой C4-валидации (не заменяет экспертную проверку):', '',
+      'Результат валидации схемы: C4 + целостность связей (не заменяет экспертную проверку):', '',
       ...(lines.length ? lines : ['Замечаний нет — схема заполнена полностью.']), '',
       '--- JSON ---', JSON.stringify(r, null, 2)
     ].join('\n');
@@ -2210,6 +2442,27 @@
     try { await navigator.clipboard.writeText($('#aiResponse').value); toast('Ответ скопирован'); }
     catch { $('#aiResponse').select(); document.execCommand('copy'); toast('Ответ скопирован'); }
   });
+
+  /* ---------- Починка висячих концов ---------- */
+  $('#btnSnapEdges').addEventListener('click', () => {
+    snapshot();
+    let fixed = 0;
+    const radius = 60 / state.view.scale;
+    state.elements.filter(e => e.type === 'arrow').forEach(a => {
+      const st = edgeStatus(a);
+      if (!st.fromAttached && snapEndpoint(a, 'from', radius, st.to)) fixed++;
+      const afterFrom = edgeStatus(a);
+      if (!afterFrom.toAttached && snapEndpoint(a, 'to', radius, afterFrom.from)) fixed++;
+    });
+    render();
+    toast(fixed ? 'Привязано концов: ' + fixed : 'Висячих концов рядом с блоками нет');
+  });
+
+  /* Небольшой локальный API: удобно для автотестов и внешних сценариев. */
+  window.ArchCanvas = {
+    state, render, currentSchema, collectGraph, edgeStatus, edgeKind,
+    validate: () => window.ArchCore ? window.ArchCore.validateC4(currentSchema()) : null
+  };
 
   const restored = restoreAutosave();
   resize();
