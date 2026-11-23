@@ -11,8 +11,9 @@ const fs = require('node:fs');
 const readline = require('node:readline');
 const core = require('./core.js');
 const presets = require('./presets.js');
+const projectImport = require('./project-import.js');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PROTOCOL = '2024-11-05';
 
 function fail(message, code) {
@@ -41,6 +42,19 @@ function loadSchema(args) {
 }
 
 const TOOLS = [
+  {
+    name: 'import_project',
+    description: 'Импортировать уже созданный проект: проанализировать каталог с кодом (манифесты, модули, зависимости, docker-compose) и вернуть готовую схему Architecture Canvas. Результат содержит schema (nodes/edges/zones/notes), Mermaid, C4-валидацию и список найденных файлов/фреймворков. Схему можно сразу импортировать в доску кнопкой «📂 Импорт» — она понимает формат nodes/edges; либо указать output, чтобы сервер записал JSON сам. Используйте этот инструмент, когда ИИ должна нарисовать схему существующего проекта по его исходникам.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Абсолютный или относительный путь к каталогу проекта' },
+        output: { type: 'string', description: 'Необязательно: путь к файлу, куда записать architecture-schema.json' },
+        maxFiles: { type: 'number', description: 'Необязательно: сколько файлов просмотреть (50–2000, по умолчанию 600)' }
+      },
+      required: ['path']
+    }
+  },
   {
     name: 'read_schema',
     description: 'Прочитать выгруженную из доски схему и вернуть компактный JSON (nodes/edges/notes) с числами.',
@@ -149,6 +163,21 @@ function presetById(id) {
 }
 
 const handlers = {
+  import_project: args => {
+    const { schema, evidence } = projectImport.importProject(args);
+    const out = {
+      schema,
+      mermaid: core.toMermaid(schema),
+      validation: core.validateC4(schema),
+      evidence,
+      hint: 'Передайте schema пользователю или укажите output — доска понимает этот JSON через «📂 Импорт» на верхней панели.'
+    };
+    if (args && args.output) {
+      out.file = projectImport.writeSchema(schema, args.output);
+      out.hint = 'Файл записан: ' + out.file + '. Откройте доску и нажмите «📂 Импорт», чтобы загрузить схему.';
+    }
+    return out;
+  },
   list_presets: () => ({
     presets: presets.presets.map(p => ({
       id: p.id, name: p.name, description: p.description, tags: p.tags,

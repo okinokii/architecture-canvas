@@ -77,7 +77,7 @@ python -m http.server 8080
 
 ## Расширение для OpenCode
 
-В корне лежит [`opencode.json`](opencode.json): он подключает тот же MCP-сервер как локальный MCP `architecture-canvas` (9 инструментов). Дополнительно доступна команда **`/architecture-canvas`** ([`.opencode/commands/architecture-canvas.md`](.opencode/commands/architecture-canvas.md)) — она объясняет агенту, как работать с пресетами, схемой и экспортом. Конфигурация подхватывается автоматически, без установки пакетов.
+В корне лежит [`opencode.json`](opencode.json): он подключает тот же MCP-сервер как локальный MCP `architecture-canvas` (10 инструментов). Дополнительно доступна команда **`/architecture-canvas`** ([`.opencode/commands/architecture-canvas.md`](.opencode/commands/architecture-canvas.md)) — она объясняет агенту, как работать с пресетами, схемой и экспортом; подробный каталог инструментов — в [`architecture-canvas/MCP.md`](architecture-canvas/MCP.md). Инструмент `import_project` анализирует готовый репозиторий и возвращает схему, которую доска загружает через «📂 Импорт». Конфигурация подхватывается автоматически, без установки пакетов.
 
 ## Пресеты и реализации
 

@@ -2283,13 +2283,22 @@
     const f = e.target.files[0]; if (!f) return;
     try {
       const d = JSON.parse(await f.text());
-      if (!Array.isArray(d.elements)) throw new Error('нет поля elements');
-      snapshot(); state.elements = d.elements;
-      state.templateHidden = Array.isArray(d.templateHidden) ? d.templateHidden.slice() : [];
+      const fromSchema = !Array.isArray(d.elements) && Array.isArray(d.nodes);
+      if (!Array.isArray(d.elements) && !fromSchema) throw new Error('нет поля elements или nodes');
+      snapshot();
+      state.elements = fromSchema ? schemaToElements(d) : d.elements;
+      state.templateHidden = fromSchema ? [] : (Array.isArray(d.templateHidden) ? d.templateHidden.slice() : []);
       applyTemplateHidden();
-      if (typeof d.showTemplate === 'boolean') { state.showTemplate = d.showTemplate; $('#showTemplate').checked = d.showTemplate; }
-      if (d.view && Number.isFinite(d.view.scale)) state.view = d.view;
-      state.selected = null; render(); toast('Схема загружена');
+      if (fromSchema) {
+        state.showTemplate = false; $('#showTemplate').checked = false;
+        state.view = { x: 0, y: 0, scale: 1 };
+      } else {
+        if (typeof d.showTemplate === 'boolean') { state.showTemplate = d.showTemplate; $('#showTemplate').checked = d.showTemplate; }
+        if (d.view && Number.isFinite(d.view.scale)) state.view = d.view;
+      }
+      state.selected = null; render();
+      if (fromSchema) fit();
+      toast(fromSchema ? 'Схема проекта импортирована' : 'Схема загружена');
     } catch (err) { toast('Ошибка загрузки: ' + err.message); }
     e.target.value = '';
   });
@@ -2362,6 +2371,82 @@
     }));
     return out;
   }
+  // Схема из MCP (nodes/edges) → настоящие элементы доски. Открывается тем же
+  // диалогом «📂 Импорт», что и обычный JSON со слоем elements.
+  function schemaToElements(schema) {
+    const s = window.ArchCore ? window.ArchCore.compactSchema(schema) : schema;
+    const out = [], byId = new Map(), positions = [];
+    const cols = new Map(), rows = new Map();
+    const nodes = Array.isArray(s.nodes) ? s.nodes : [];
+    nodes.forEach((n, i) => {
+      const zone = String(n.zone || '') || 'Компоненты';
+      if (!cols.has(zone)) cols.set(zone, cols.size);
+      const row = rows.get(zone) || 0;
+      rows.set(zone, row + 1);
+      const id = 'u' + (++state.blockSeq);
+      const type = String(n.type || '').toLowerCase();
+      let kind = 'service';
+      if (/db|database|postgres|mysql|mongo|elastic|redis|cache/.test(type)) kind = /cache|redis/.test(type) ? 'cache' : 'db';
+      else if (/queue|kafka|rabbit|event/.test(type)) kind = 'queue';
+      else if (/storage|s3|file/.test(type)) kind = 'storage';
+      else if (/gateway|nginx|proxy/.test(type)) kind = 'gateway';
+      else if (/client|web|mobile|ui|frontend/.test(type)) kind = 'client';
+      else if (/external|3rd/.test(type)) kind = 'external';
+      const x = 80 + cols.get(zone) * 360, y = 120 + row * 130;
+      const el = {
+        type: 'block', id, x, y, w: 200, h: 56,
+        label: String(n.label || 'Блок ' + (i + 1)), sub: String(n.description || ''),
+        kind, color: KINDS[kind].color, framed: true, shape: 'rect'
+      };
+      fitTextBlock(el);
+      out.push(el);
+      positions.push({ zone, x, y, w: el.w, h: el.h });
+      byId.set(String(n.id || n.label), el);
+      byId.set(String(n.label), el);
+    });
+    const zoneEls = [];
+    positions.forEach(p => {
+      const group = positions.filter(q => q.zone === p.zone);
+      if (group[0] !== p) return;
+      const x1 = Math.min(...group.map(q => q.x)), y1 = Math.min(...group.map(q => q.y));
+      const x2 = Math.max(...group.map(q => q.x + q.w)), y2 = Math.max(...group.map(q => q.y + q.h));
+      zoneEls.push({ type: 'zone', x: x1 - 34, y: y1 - 58, w: x2 - x1 + 68, h: y2 - y1 + 110, title: p.zone });
+    });
+    (Array.isArray(s.edges) ? s.edges : []).forEach(e => {
+      const a = byId.get(String(e.from || e.fromLabel || '')) || byId.get(String(e.fromLabel || ''));
+      const b = byId.get(String(e.to || e.toLabel || '')) || byId.get(String(e.toLabel || ''));
+      if (!a || !b || a === b) return;
+      const sx = a.x + a.w / 2, sy = a.y + a.h / 2;
+      const tx = b.x + b.w / 2, ty = b.y + b.h / 2;
+      let x1 = sx, y1 = sy, x2 = tx, y2 = ty;
+      if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+        const sign = Math.sign(tx - sx) || 1;
+        x1 = sx + sign * a.w / 2; x2 = tx - sign * b.w / 2;
+      } else {
+        const sign = Math.sign(ty - sy) || 1;
+        y1 = sy + sign * a.h / 2; y2 = ty - sign * b.h / 2;
+      }
+      const kind = EDGE_KINDS[e.kind] ? e.kind : 'sync';
+      out.push({
+        type: 'arrow', x1, y1, x2, y2,
+        fromLabel: a.label, toLabel: b.label, fromId: a.id, toId: b.id,
+        note: String(e.label || ''), kind, dashed: kindIsAsync(kind),
+        color: '#6f86b8', width: 2
+      });
+    });
+    const maxRow = Math.max(1, ...rows.values());
+    const notes = Array.isArray(s.notes) ? s.notes : [];
+    notes.forEach((n, i) => {
+      const text = typeof n === 'string' ? n : String(n.text || '');
+      if (!text) return;
+      out.push({
+        type: 'note', x: 80 + (i % 4) * 260, y: 140 + maxRow * 130 + Math.floor(i / 4) * 130,
+        w: 190, h: 100, text, color: '#ffb454'
+      });
+    });
+    return zoneEls.concat(out);
+  }
+
   const presetSel = $('#presetSelect');
   const closePresets = () => $('#presetModal').classList.add('hidden');
   $('#btnPresetsTop').addEventListener('click', () => $('#presetModal').classList.remove('hidden'));
