@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "zones": [
+    "ПРОДЮСЕРЫ",
+    "БРОКЕР",
+    "КОНСЬЮМЕРЫ",
+    "ХРАНИЛИЩА"
+  ],
+  "nodes": [
+    {
+      "id": "api",
+      "label": "Command API",
+      "type": "gateway",
+      "description": "POST /events",
+      "zone": "ПРОДЮСЕРЫ",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "producer",
+      "label": "Event Producer",
+      "type": "service",
+      "description": "валидация, publish",
+      "zone": "ПРОДЮСЕРЫ",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "broker",
+      "label": "Kafka",
+      "type": "queue",
+      "description": "топики, retention",
+      "zone": "БРОКЕР",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "audit",
+      "label": "Audit Consumer",
+      "type": "service",
+      "description": "журнал событий",
+      "zone": "КОНСЬЮМЕРЫ",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "notify",
+      "label": "Notify Consumer",
+      "type": "service",
+      "description": "уведомления",
+      "zone": "КОНСЬЮМЕРЫ",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "projector",
+      "label": "Projection Worker",
+      "type": "service",
+      "description": "read model",
+      "zone": "КОНСЬЮМЕРЫ",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "logdb",
+      "label": "Event Log",
+      "type": "db",
+      "description": "append-only",
+      "zone": "ХРАНИЛИЩА",
+      "source": "preset:event-driven"
+    },
+    {
+      "id": "readdb",
+      "label": "Read Model DB",
+      "type": "db",
+      "description": "проекции",
+      "zone": "ХРАНИЛИЩА",
+      "source": "preset:event-driven"
+    }
+  ],
+  "edges": [
+    {
+      "from": "api",
+      "fromLabel": "Command API",
+      "to": "producer",
+      "toLabel": "Event Producer",
+      "label": "команда",
+      "async": false
+    },
+    {
+      "from": "producer",
+      "fromLabel": "Event Producer",
+      "to": "broker",
+      "toLabel": "Kafka",
+      "label": "publish",
+      "async": true
+    },
+    {
+      "from": "broker",
+      "fromLabel": "Kafka",
+      "to": "audit",
+      "toLabel": "Audit Consumer",
+      "label": "consume",
+      "async": true
+    },
+    {
+      "from": "broker",
+      "fromLabel": "Kafka",
+      "to": "notify",
+      "toLabel": "Notify Consumer",
+      "label": "consume",
+      "async": true
+    },
+    {
+      "from": "broker",
+      "fromLabel": "Kafka",
+      "to": "projector",
+      "toLabel": "Projection Worker",
+      "label": "consume",
+      "async": true
+    },
+    {
+      "from": "audit",
+      "fromLabel": "Audit Consumer",
+      "to": "logdb",
+      "toLabel": "Event Log",
+      "label": "append",
+      "async": false
+    },
+    {
+      "from": "projector",
+      "fromLabel": "Projection Worker",
+      "to": "readdb",
+      "toLabel": "Read Model DB",
+      "label": "upsert",
+      "async": false
+    }
+  ],
+  "notes": [
+    "Связи с брокером асинхронные (пунктир): eventual consistency."
+  ]
+}

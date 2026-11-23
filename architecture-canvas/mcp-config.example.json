@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "architecture-canvas": {
+      "command": "node",
+      "args": ["C:/Users/daniel/Documents/Проект по умолчанию/architecture-canvas/mcp-server.js"],
+      "env": {
+        "GITHUB_TOKEN": ""
+      }
+    }
+  }
+}

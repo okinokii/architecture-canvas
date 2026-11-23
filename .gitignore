@@ -1,0 +1,12 @@
+# Посторонние данные, не относящиеся к проекту Architecture Canvas
+ukraine_750kv_map.html
+ukraine_750kv_substations.csv
+ukraine_lines.csv
+ukraine_power_interactive.html
+research_notes/
+
+# Служебные файлы
+.DS_Store
+Thumbs.db
+*.log
+node_modules/

@@ -1,0 +1,2100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Architecture Canvas — заготовка + рисунок → запрос для Qwen</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #111a30;
+    --panel-2: #16213a;
+    --line: #26314f;
+    --text: #e7edff;
+    --muted: #93a1c4;
+    --accent: #5b8cff;
+    --accent-2: #29c7a3;
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+  }
+  #app {
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 64px 1fr 268px;
+    grid-template-rows: 56px 1fr 34px;
+    grid-template-areas:
+      "head head head"
+      "tools stage side"
+      "foot foot foot";
+  }
+  header {
+    grid-area: head;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .tag {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+    padding: 3px 8px; border-radius: 999px;
+  }
+  header .spacer { flex: 1; }
+  button, select, input, textarea { font: inherit; }
+  .btn {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 11px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); background: #1b2948; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #06112c; font-weight: 650; }
+  .btn.primary:hover { background: #7ba2ff; }
+  .btn.ghost { background: transparent; }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  #tools {
+    grid-area: tools;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 10px 8px;
+    display: flex; flex-direction: column; gap: 6px;
+    overflow-y: auto;
+  }
+  .tool {
+    width: 46px; height: 42px; border-radius: 10px;
+    background: transparent; border: 1px solid transparent;
+    color: var(--muted); cursor: pointer;
+    display: grid; place-items: center; font-size: 19px;
+  }
+  .tool:hover { background: var(--panel-2); color: var(--text); }
+  .tool.active { background: #1d2c50; border-color: var(--accent); color: #fff; }
+  .tool-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+
+  #stage { grid-area: stage; position: relative; overflow: hidden; background: #0d1428; }
+  #canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  #canvas[data-cursor="grab"] { cursor: grab; }
+  #canvas[data-cursor="move"] { cursor: move; }
+  #canvas[data-cursor="text"] { cursor: text; }
+
+  #side {
+    grid-area: side; background: var(--panel);
+    border-left: 1px solid var(--line);
+    padding: 14px; overflow-y: auto;
+  }
+  .sec { margin-bottom: 20px; }
+  .sec h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .9px;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+  .sw {
+    width: 25px; height: 25px; border-radius: 7px; cursor: pointer;
+    border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,.15);
+  }
+  .sw.active { border-color: #fff; transform: scale(1.08); }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .row label { color: var(--muted); min-width: 44px; font-size: 12px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  input[type=number], select {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; width: 100%;
+  }
+  .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .pal {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 9px; color: var(--text); cursor: pointer;
+    padding: 9px 6px; font-size: 11px; text-align: center;
+  }
+  .pal:hover { border-color: var(--accent); }
+  .pal .dot { display: block; width: 9px; height: 9px; border-radius: 3px; margin: 0 auto 6px; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--muted); cursor: pointer; font-size: 12px; margin: 7px 0; }
+  .check input { accent-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11px; line-height: 1.55; }
+  .hint kbd { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--text); }
+
+  footer {
+    grid-area: foot; background: var(--panel); border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    font-size: 12px; color: var(--muted);
+  }
+  footer .sep { width: 1px; height: 16px; background: var(--line); }
+  #status { flex: 1; }
+
+  .editor {
+    position: fixed; z-index: 50; width: 320px;
+    background: var(--panel-2); border: 1px solid var(--accent);
+    border-radius: 10px; padding: 8px; box-shadow: 0 12px 35px rgba(0,0,0,.45);
+  }
+  .editor textarea {
+    width: 100%; min-height: 62px; resize: vertical;
+    background: #0d1428; color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px; outline: none;
+  }
+  .editor .ea { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
+  .editor .ea .btn { padding: 5px 9px; font-size: 12px; }
+  .editor .microw { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .editor .microw .btn { flex: 1; padding: 5px 6px; font-size: 11px; }
+  .editor .microw select { flex: 1.15; padding: 5px 6px; font-size: 11px; }
+  .btn.rec { border-color: #ff6b6b; color: #ff9b9b; background: rgba(255,107,107,.12); }
+  .btn.rec::before { content: '● '; }
+  #dictationStatus { margin-top: 5px; min-height: 14px; }
+  .hidden { display: none !important; }
+
+  #toast {
+    position: fixed; bottom: 48px; left: 50%; transform: translateX(-50%);
+    background: #1d2c50; border: 1px solid var(--accent); color: #fff;
+    padding: 9px 14px; border-radius: 9px; z-index: 100; opacity: 0;
+    transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #modal, #c4Modal, #aiModal {
+    position: fixed; inset: 0; background: rgba(4,8,18,.72);
+    display: grid; place-items: center; z-index: 80; padding: 20px;
+  }
+  #modal .box, #c4Modal .box, #aiModal .box {
+    width: min(760px, 100%); max-height: 86vh; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  }
+  #modal h3, #c4Modal h3, #aiModal h3 { margin: 0 0 10px; font-size: 15px; }
+  #promptText {
+    width: 100%; min-height: 340px; flex: 1;
+    background: #0d1428; color: #dbe5ff; border: 1px solid var(--line);
+    border-radius: 9px; padding: 12px; font: 12px/1.55 Consolas, "Cascadia Code", monospace;
+    resize: vertical;
+  }
+  #modal .ma, #c4Modal .ma, #aiModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  @media (max-width: 1100px) {
+    #app { grid-template-columns: 56px 1fr 224px; }
+    header .tag { display: none; }
+  }
+
+  /* ---------- Планшеты, касания и S Pen ---------- */
+  #stage, #canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .tool, .btn, .sw, .pal { -webkit-tap-highlight-color: transparent; }
+  #stylusStatus { white-space: nowrap; }
+  #zoomControls {
+    position: absolute; right: 12px; bottom: 12px; z-index: 5;
+    display: flex; gap: 6px;
+  }
+  #zoomControls .btn {
+    width: 44px; height: 44px; padding: 0; font-size: 18px;
+    background: rgba(17,26,48,.9); border-color: #314061;
+  }
+  #btnSide, #btnSideClose, #sideBackdrop { display: none; }
+
+  @media (pointer: coarse) {
+    .tool { width: 52px; height: 50px; font-size: 21px; }
+    .btn { padding: 10px 14px; }
+    .editor .ea .btn, .editor .microw .btn { padding: 8px 10px; }
+    .sw { width: 34px; height: 34px; }
+    .pal { padding: 12px 6px; font-size: 12px; }
+    input[type=range] { height: 28px; }
+    .check input { width: 18px; height: 18px; }
+  }
+
+  @media (max-width: 900px) {
+    #app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 52px minmax(0,1fr) 64px 30px;
+      grid-template-areas: "head" "stage" "tools" "foot";
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+    header { padding: 0 8px; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+    header::-webkit-scrollbar { display: none; }
+    header h1 { font-size: 13px; flex: 0 0 auto; }
+    header .btn { flex: 0 0 auto; padding: 8px 10px; }
+    #btnSide, #btnSideClose { display: inline-block; }
+    #tools {
+      flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden;
+      padding: 6px 8px; gap: 6px; border-right: 0; border-top: 1px solid var(--line);
+      scrollbar-width: none;
+    }
+    #tools::-webkit-scrollbar { display: none; }
+    .tool { flex: 0 0 52px; width: 52px; height: 50px; }
+    .tool-sep { width: 1px; height: 34px; margin: 0 4px; flex: 0 0 1px; }
+    #side {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 70;
+      width: min(340px, 90vw); transform: translateX(102%); transition: transform .2s ease;
+      box-shadow: -12px 0 40px rgba(0,0,0,.5);
+      padding-top: calc(14px + env(safe-area-inset-top));
+      padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    }
+    #side.open { transform: none; }
+    #sideBackdrop {
+      display: block; position: fixed; inset: 0; z-index: 65;
+      background: rgba(4,8,18,.5); opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    #sideBackdrop.show { opacity: 1; pointer-events: auto; }
+    footer { padding: 0 8px; font-size: 11px; gap: 8px; padding-bottom: env(safe-area-inset-bottom); }
+    #stylusStatus { display: none; }
+  }
+  @media (max-height: 520px) {
+    #app { grid-template-rows: 44px minmax(0,1fr) 54px 26px; }
+    .tool { height: 44px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <button class="btn" id="btnSide" title="Панель настроек">☰</button>
+    <h1>Architecture Canvas</h1>
+    <span class="tag">заготовка архитектуры → PNG + запрос для Qwen 3.8</span>
+    <div class="spacer"></div>
+    <button class="btn" id="btnUndo" title="Ctrl+Z">↶ Отмена</button>
+    <button class="btn" id="btnRedo" title="Ctrl+Y">↷ Повтор</button>
+    <button class="btn" id="btnFit">Вписать</button>
+    <button class="btn" id="btnPrompt">📋 Запрос для Qwen</button>
+    <button class="btn" id="btnPack" title="PNG + Mermaid + JSON + запрос">⬇ Пакет</button>
+    <button class="btn primary" id="btnExport">⬇ Экспорт PNG</button>
+  </header>
+
+  <div id="tools" title="Инструменты">
+    <button class="tool active" data-tool="select" title="Выбор / перемещение (V)">⌖</button>
+    <button class="tool" data-tool="pen" title="Карандаш (P)">✎</button>
+    <button class="tool" data-tool="line" title="Линия (L)">╱</button>
+    <button class="tool" data-tool="arrow" title="Стрелка (A)">→</button>
+    <button class="tool" data-tool="rect" title="Прямоугольник (R)">▭</button>
+    <button class="tool" data-tool="ellipse" title="Эллипс (E)">◯</button>
+    <button class="tool" data-tool="text" title="Текст (T)">T</button>
+    <button class="tool" data-tool="note" title="Заметка (N)">▤</button>
+    <button class="tool" data-tool="shape" title="Фигура вокруг текстового блока (F)">▣</button>
+    <div class="tool-sep"></div>
+    <button class="tool" data-tool="hand" title="Перетаскивание холста (H / пробел)">✋</button>
+    <button class="tool" data-tool="eraser" title="Ластик (D)">⌫</button>
+  </div>
+
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="zoomControls">
+      <button class="btn" id="zoomOut" title="Уменьшить">−</button>
+      <button class="btn" id="zoomFit" title="Вписать схему">⤢</button>
+      <button class="btn" id="zoomIn" title="Увеличить">+</button>
+    </div>
+  </div>
+
+  <aside id="side">
+    <div class="sec" style="display:flex;align-items:center;justify-content:space-between">
+      <h2 style="margin:0">Настройки</h2>
+      <button class="btn" id="btnSideClose" title="Закрыть">✕</button>
+    </div>
+
+    <div class="sec">
+      <h2>Планшет / S Pen</h2>
+      <div class="hint" id="stylusHint">Перо: подключите S Pen или коснитесь холста пером, чтобы увидеть нажим и наклон.</div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="palmReject" checked> Отсекать ладонь при работе пером</label>
+      <label class="check"><input type="checkbox" id="penPressure" checked> Нажим и наклон пера в линии</label>
+      <div class="row" style="margin-top:8px">
+        <label style="min-width:auto;color:var(--muted)">Касание</label>
+        <select id="touchMode">
+          <option value="draw">Один палец — рисовать</option>
+          <option value="pan">Один палец — панорама</option>
+        </select>
+      </div>
+      <div class="hint">Два пальца — всегда масштаб и панорама. S Pen: боковая кнопка — панорама, ластик — удаление, нажим меняет толщину мазка, наклон — его форму.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Цвет и толщина</h2>
+      <div class="swatches" id="swatches"></div>
+      <div class="row" style="margin-top:10px">
+        <label>Линия</label><input type="range" id="widthRange" min="1" max="12" value="3">
+        <span id="widthVal" style="width:22px;color:var(--muted)">3</span>
+      </div>
+      <div class="row">
+        <label>Текст</label><input type="range" id="fontRange" min="12" max="34" value="17">
+        <span id="fontVal" style="width:22px;color:var(--muted)">17</span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>Блоки архитектуры</h2>
+      <div class="palette" id="palette"></div>
+      <div class="hint" style="margin-top:8px">Клик по блоку → текстовая метка на холсте с открытым редактором. Двойной клик — изменить текст.</div>
+      <div class="row" style="margin-top:10px">
+        <label style="min-width:auto;color:var(--muted)">Фигура</label>
+        <select id="shapeKind">
+          <option value="rect">▭ Прямоугольник</option>
+          <option value="ellipse">◯ Эллипс</option>
+        </select>
+      </div>
+      <div class="hint">Инструмент «▣»: клик по текстовой метке — обрамить в выбранную фигуру; повторный клик — убрать рамку.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Пресеты архитектур</h2>
+      <div class="hint">Классические построения: слоистый монолит, MVC, микросервисы, события, CQRS, гексагональная, serverless.</div>
+      <select id="presetSelect" style="margin-top:8px"></select>
+      <div class="hint" id="presetDesc" style="margin-top:7px"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" id="presetLoad" style="flex:1">Заменить слой</button>
+        <button class="btn" id="presetAdd" style="flex:1">Добавить</button>
+      </div>
+      <div class="hint">Пресет сразу даёт корректный Mermaid/JSON и проходит C4-валидацию.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Диктовка в блоки</h2>
+      <div class="hint">Язык выбирается здесь или в окне редактора. В редакторе нажмите «🎤 Название» / «🎤 Описание» (или <kbd>Ctrl+M</kbd> / <kbd>Ctrl+Shift+M</kbd>), говорите — текст появится в поле. Повторное нажатие останавливает запись.</div>
+      <select id="dictationLangSide" style="margin-top:8px"></select>
+      <div class="hint" id="dictationSupport" style="margin-top:7px"></div>
+    </div>
+
+    <div class="sec">
+      <h2>Слой заготовки</h2>
+      <label class="check"><input type="checkbox" id="showTemplate" checked> Показывать заготовку</label>
+      <label class="check"><input type="checkbox" id="showGrid" checked> Сетка</label>
+      <button class="btn ghost danger" id="btnClear" style="width:100%;margin-top:8px">Очистить мой слой</button>
+    </div>
+
+    <div class="sec">
+      <h2>Файл</h2>
+      <div class="row"><button class="btn" id="btnSave" style="flex:1">💾 JSON</button><button class="btn" id="btnLoad" style="flex:1">📂 JSON</button></div>
+      <input type="file" id="fileInput" accept="application/json" class="hidden">
+    </div>
+
+    <div class="sec">
+      <h2>Автосохранение и версии</h2>
+      <div class="hint" id="autosaveStatus">Автосохранение включено</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="btnVersion" style="flex:1">＋ Версия</button>
+        <button class="btn" id="btnVersionsExport" style="flex:1">⬇ История</button>
+      </div>
+      <select id="versionSelect" style="margin-top:8px"></select>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="btnRestoreVersion" style="flex:1">Восстановить</button>
+        <button class="btn danger" id="btnDeleteVersion" style="flex:1">Удалить</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>C4-валидация</h2>
+      <div class="hint" id="c4Status">Не проверялось</div>
+      <button class="btn" id="btnValidate" style="width:100%;margin-top:8px">🔎 Проверить схему</button>
+    </div>
+
+    <div class="sec">
+      <h2>GitHub Gist</h2>
+      <div class="hint">Токен с правом <code>gist</code>. Хранится только в этом браузере и никуда не экспортируется.</div>
+      <input type="password" id="ghToken" placeholder="github_pat_…" style="margin-top:8px">
+      <input id="ghGistId" placeholder="ID gist (для обновления)" style="margin-top:7px">
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="ghCreate" style="flex:1">Создать</button>
+        <button class="btn" id="ghUpdate" style="flex:1">Обновить</button>
+      </div>
+      <div class="hint" id="ghStatus" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h2>AI (OpenAI-совместимый API)</h2>
+      <div class="hint">Например DashScope/Qwen-VL. Ключ хранится только в браузере.</div>
+      <input id="aiEndpoint" style="margin-top:8px" placeholder="https://…/v1/chat/completions">
+      <input id="aiModel" style="margin-top:7px" placeholder="qwen-vl-max">
+      <input type="password" id="aiKey" style="margin-top:7px" placeholder="API key">
+      <button class="btn primary" id="aiSend" style="width:100%;margin-top:8px">🤖 Отправить схему в модель</button>
+      <div class="hint" id="aiStatus" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h2>Горячие клавиши</h2>
+      <div class="hint">
+        <kbd>V</kbd> выбор · <kbd>P</kbd> карандаш · <kbd>L</kbd> линия · <kbd>A</kbd> стрелка<br>
+        <kbd>R</kbd> прямоугольник · <kbd>E</kbd> эллипс · <kbd>T</kbd> текст · <kbd>N</kbd> заметка · <kbd>F</kbd> фигура вокруг метки<br>
+        <kbd>H</kbd> или пробел — панорама · колесо мыши — масштаб<br>
+        <kbd>Del</kbd> удалить · <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> · <kbd>Ctrl+S</kbd> PNG<br>
+        <kbd>Ctrl+M</kbd> диктовать название · <kbd>Ctrl+Shift+M</kbd> описание<br>
+        На планшете: два пальца — масштаб/панорама · кнопка S Pen — панорама · ластик S Pen — удалить
+      </div>
+    </div>
+  </aside>
+
+  <div id="sideBackdrop"></div>
+
+  <footer>
+    <span id="stylusStatus">Перо: не подключено</span><span class="sep"></span>
+    <span id="status">Готово</span><span class="sep"></span>
+    <span id="zoomLabel">100%</span><span class="sep"></span>
+    <span id="countLabel">элементов: 0</span>
+  </footer>
+</div>
+
+<div id="editor" class="editor hidden">
+  <input id="editorSub" class="hidden" placeholder="Описание (необязательно)" style="width:100%;margin-bottom:7px;background:#0d1428;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px;outline:none">
+  <textarea id="editorInput" placeholder="Название блока / текст"></textarea>
+  <div class="microw">
+    <select id="dictationLang" title="Язык диктовки"></select>
+    <button class="btn" id="micTitle" title="Диктовать название (Ctrl+M)">🎤 Название</button>
+    <button class="btn" id="micSub" title="Диктовать описание (Ctrl+Shift+M)">🎤 Описание</button>
+  </div>
+  <div class="hint" id="dictationStatus"></div>
+  <div class="ea"><button class="btn" id="editorCancel">Отмена</button><button class="btn primary" id="editorOk">ОК</button></div>
+</div>
+
+<div id="modal" class="hidden">
+  <div class="box">
+    <h3>Запрос для Qwen 3.8: 5 форматов импорта схемы</h3>
+    <div class="hint" style="margin-bottom:8px">Выберите способ передачи схемы модели. Для Qwen с поддержкой изображений рекомендуется «комбинированный»: картинка + Mermaid + JSON. Текстовые форматы можно использовать даже без прикрепления PNG.</div>
+    <div class="row" style="margin-bottom:8px">
+      <label style="min-width:auto;color:var(--muted)">Формат:</label>
+      <select id="promptFormat"></select>
+    </div>
+    <textarea id="promptText" spellcheck="false"></textarea>
+    <div class="ma">
+      <button class="btn" id="promptMmd">⬇ .mmd</button>
+      <button class="btn" id="promptJson">⬇ .json</button>
+      <button class="btn" id="promptDownload">⬇ .txt</button>
+      <button class="btn" id="promptClose">Закрыть</button>
+      <button class="btn primary" id="promptCopy">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<div id="c4Modal" class="hidden">
+  <div class="box">
+    <h3>Результат C4-валидации</h3>
+    <pre id="c4Report" style="flex:1;overflow:auto;background:#0d1428;color:#dbe5ff;border:1px solid var(--line);border-radius:9px;padding:12px;font:12px/1.55 Consolas,monospace;white-space:pre-wrap"></pre>
+    <div class="ma"><button class="btn" id="c4Close">Закрыть</button></div>
+  </div>
+</div>
+
+<div id="aiModal" class="hidden">
+  <div class="box">
+    <h3>Ответ модели</h3>
+    <textarea id="aiResponse" spellcheck="false" style="flex:1;min-height:340px"></textarea>
+    <div class="ma">
+      <button class="btn" id="aiClose">Закрыть</button>
+      <button class="btn primary" id="aiCopy">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="core.js"></script>
+<script src="presets.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const $ = s => document.querySelector(s);
+  const canvas = $('#canvas');
+  const ctx = canvas.getContext('2d');
+  const stage = $('#stage');
+
+  const COLORS = ['#5b8cff', '#29c7a3', '#ffb454', '#ff6b6b', '#c084fc', '#38bdf8', '#f472b6', '#e7edff', '#94a3b8'];
+  const KINDS = {
+    service:  { label: 'Сервис',      sub: 'Business logic', color: '#5b8cff' },
+    gateway:  { label: 'API Gateway', sub: 'REST / gRPC',    color: '#38bdf8' },
+    client:   { label: 'Клиент',      sub: 'Web / Mobile',   color: '#29c7a3' },
+    db:       { label: 'База данных', sub: 'PostgreSQL',     color: '#c084fc' },
+    cache:    { label: 'Кэш',         sub: 'Redis',          color: '#ffb454' },
+    queue:    { label: 'Очередь',     sub: 'Kafka / SQS',    color: '#f472b6' },
+    storage:  { label: 'Хранилище',   sub: 'S3 / Files',     color: '#a3e635' },
+    external: { label: 'Внешний API', sub: '3rd party',      color: '#94a3b8' }
+  };
+
+  const ZONE = { fill: 'rgba(91,140,255,.035)', stroke: 'rgba(91,140,255,.28)' };
+
+  function zone(x, y, w, h, title) {
+    return { type: 'zone', x, y, w, h, title };
+  }
+  function block(id, x, y, w, h, label, sub, kind, color) {
+    return { type: 'block', id, x, y, w, h, label, sub, kind, color: color || KINDS[kind].color };
+  }
+  function arrow(x1, y1, x2, y2, fromLabel, toLabel, note, dashed) {
+    return { type: 'arrow', x1, y1, x2, y2, fromLabel, toLabel, note: note || '', dashed: !!dashed, color: '#6f86b8', width: 2 };
+  }
+
+  function buildTemplate() {
+    const els = [
+      zone(48, 92, 248, 672, 'КЛИЕНТЫ'),
+      zone(332, 92, 248, 672, 'ГРАНИЧНЫЙ СЛОЙ'),
+      zone(616, 92, 324, 672, 'СЕРВИСЫ'),
+      zone(976, 92, 336, 672, 'ДАННЫЕ И ИНФРАСТРУКТУРА'),
+
+      block('web', 72, 158, 200, 82, 'Web / SPA', 'React, Next.js', 'client'),
+      block('mobile', 72, 320, 200, 82, 'Mobile App', 'iOS / Android', 'client'),
+      block('partner', 72, 560, 200, 82, 'Партнёрский API', 'B2B интеграции', 'external'),
+
+      block('cdn', 356, 158, 200, 82, 'CDN + WAF', 'TLS, статик, DDoS', 'gateway'),
+      block('gw', 356, 320, 200, 82, 'API Gateway', 'REST / GraphQL, rate limit', 'gateway'),
+      block('obs', 356, 560, 200, 82, 'Observability', 'логи, метрики, трейсы', 'service'),
+
+      block('auth', 642, 136, 148, 78, 'Auth Service', 'JWT, OAuth2', 'service'),
+      block('core', 642, 274, 148, 78, 'Core API', 'бизнес-логика', 'service'),
+      block('worker', 642, 412, 148, 78, 'Worker', 'фоновые задачи', 'service'),
+      block('media', 642, 550, 148, 78, 'Media Service', 'загрузки, изображения', 'service'),
+
+      block('pg', 1000, 158, 170, 82, 'PostgreSQL', 'основные данные', 'db'),
+      block('redis', 1000, 300, 170, 82, 'Redis', 'кэш, сессии', 'cache'),
+      block('kafka', 1000, 442, 170, 82, 'Kafka', 'события, очередь', 'queue'),
+      block('s3', 1000, 584, 170, 82, 'Object Storage', 'файлы, медиа', 'storage'),
+
+      arrow(272, 199, 356, 199, 'Web / SPA', 'CDN + WAF', 'HTTPS'),
+      arrow(272, 361, 356, 361, 'Mobile App', 'API Gateway', 'mTLS'),
+      arrow(456, 240, 456, 320, 'CDN + WAF', 'API Gateway', ''),
+      arrow(556, 351, 642, 175, 'API Gateway', 'Auth Service', ''),
+      arrow(556, 361, 642, 313, 'API Gateway', 'Core API', ''),
+      arrow(556, 380, 642, 589, 'API Gateway', 'Media Service', ''),
+      arrow(790, 313, 1000, 199, 'Core API', 'PostgreSQL', 'SQL'),
+      arrow(790, 325, 1000, 341, 'Core API', 'Redis', ''),
+      arrow(790, 337, 1000, 483, 'Core API', 'Kafka', 'events'),
+      arrow(790, 451, 1000, 483, 'Worker', 'Kafka', 'consume'),
+      arrow(790, 590, 1000, 625, 'Media Service', 'Object Storage', 'S3 API'),
+      arrow(790, 593, 1000, 341, 'Media Service', 'Redis', 'превью', true),
+      arrow(272, 601, 356, 601, 'Партнёрский API', 'Observability', '', true),
+      arrow(790, 175, 556, 601, 'Auth Service', 'Observability', 'метрики', true),
+      arrow(790, 313, 556, 601, 'Core API', 'Observability', 'трассировки', true)
+    ];
+    return els;
+  }
+
+  const state = {
+    tool: 'select',
+    color: COLORS[0],
+    width: 3,
+    fontSize: 17,
+    showTemplate: true,
+    showGrid: true,
+    template: buildTemplate(),
+    elements: [],
+    view: { x: 0, y: 0, scale: 1 },
+    drag: null,
+    preview: null,
+    selected: null,
+    editor: null,
+    history: [],
+    future: [],
+    blockSeq: 0,
+    space: false,
+    pointers: new Map(),
+    gesture: null,
+    gestureLock: false,
+    penDown: false,
+    lastPenAt: 0,
+    stylus: null,
+    penPressure: true
+  };
+
+  let dpr = 1;
+  let cssW = 1, cssH = 1;
+  let autosaveTimer = null;
+
+  const AUTOSAVE_KEY = 'archcanvas.autosave.v1';
+  const VERSIONS_KEY = 'archcanvas.versions.v1';
+
+  function lsGet(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (_) { return fallback; }
+  }
+  function lsSet(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (_) { return false; }
+  }
+
+  /* Настройки планшета и пера */
+  const PALM_KEY = 'archcanvas.palmReject';
+  const PRESSURE_KEY = 'archcanvas.penPressure';
+  const TOUCH_KEY = 'archcanvas.touchMode';
+  let palmReject = lsGet(PALM_KEY, true) !== false;
+  let penPressure = lsGet(PRESSURE_KEY, true) !== false;
+  let touchMode = lsGet(TOUCH_KEY, 'draw') === 'pan' ? 'pan' : 'draw';
+  state.penPressure = penPressure;
+  function currentSnapshot() {
+    return {
+      savedAt: new Date().toISOString(),
+      showTemplate: state.showTemplate,
+      elements: JSON.parse(JSON.stringify(state.elements)),
+      view: { ...state.view }
+    };
+  }
+  function refreshAutosaveUI() {
+    const snap = lsGet(AUTOSAVE_KEY, null);
+    $('#autosaveStatus').textContent = snap
+      ? 'Автосохранено: ' + new Date(snap.savedAt).toLocaleString('ru-RU')
+      : 'Автосохранение включено';
+    const versions = lsGet(VERSIONS_KEY, []);
+    const sel = $('#versionSelect');
+    const prev = sel.value;
+    sel.innerHTML = '';
+    versions.forEach((v, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = new Date(v.savedAt).toLocaleString('ru-RU') + ' · ' + (v.elements || []).length + ' эл.';
+      sel.appendChild(o);
+    });
+    if (prev && versions.length) sel.value = prev;
+  }
+  function autoSave() {
+    const snap = currentSnapshot();
+    lsSet(AUTOSAVE_KEY, snap);
+    const versions = lsGet(VERSIONS_KEY, []);
+    const last = versions[0] && versions[0].savedAt;
+    if (!last || Date.now() - new Date(last).getTime() > 60000) {
+      versions.unshift(snap);
+      lsSet(VERSIONS_KEY, versions.slice(0, 30));
+    }
+    refreshAutosaveUI();
+  }
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(autoSave, 500);
+  }
+  function restoreAutosave() {
+    const snap = lsGet(AUTOSAVE_KEY, null);
+    if (!snap || !Array.isArray(snap.elements)) return false;
+    state.elements = snap.elements;
+    if (typeof snap.showTemplate === 'boolean') {
+      state.showTemplate = snap.showTemplate;
+      $('#showTemplate').checked = snap.showTemplate;
+    }
+    if (snap.view && Number.isFinite(snap.view.scale)) state.view = snap.view;
+    state.blockSeq = state.elements.reduce((m, e) => Math.max(m, parseInt(String(e.id || '').replace(/\D/g, ''), 10) || 0), 0);
+    refreshAutosaveUI();
+    return true;
+  }
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    cssW = Math.max(1, r.width); cssH = Math.max(1, r.height);
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    render();
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove('show'), 1900);
+  }
+
+  function hexToRgba(hex, a) {
+    const h = hex.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function wrapText(c, text, maxW) {
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (c.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+      else cur = test;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  function drawZone(c, e) {
+    c.save();
+    c.setLineDash([7, 6]);
+    roundRectPath(c, e.x, e.y, e.w, e.h, 14);
+    c.fillStyle = ZONE.fill; c.fill();
+    c.strokeStyle = ZONE.stroke; c.lineWidth = 1.5; c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = 'rgba(147,161,196,.85)';
+    c.font = '600 12px Segoe UI, sans-serif';
+    c.fillText(e.title, e.x + 14, e.y + 22);
+    c.restore();
+  }
+
+  function fitTextBlock(e) {
+    ctx.save();
+    ctx.font = '600 14px Segoe UI, sans-serif';
+    const lw = ctx.measureText(e.label || '').width;
+    ctx.font = '11px Segoe UI, sans-serif';
+    const sw = ctx.measureText(e.sub || '').width;
+    ctx.restore();
+    const framed = e.framed !== false; // старые сохранённые блоки остаются рамчатыми
+    const pad = framed ? (e.shape === 'ellipse' ? 32 : 26) : 5;
+    e.w = Math.max(framed ? 110 : 24, Math.ceil(Math.max(lw, sw)) + pad * 2);
+    e.h = framed ? (e.sub ? 64 : 44) : (e.sub ? 36 : 22);
+  }
+
+  function drawBlock(c, e, selected) {
+    const framed = e.framed !== false;
+    const ellipse = framed && e.shape === 'ellipse';
+    c.save();
+
+    if (framed) {
+      c.shadowColor = 'rgba(0,0,0,.28)'; c.shadowBlur = 9; c.shadowOffsetY = 3;
+      if (ellipse) {
+        c.beginPath();
+        c.ellipse(e.x + e.w / 2, e.y + e.h / 2, e.w / 2, e.h / 2, 0, 0, Math.PI * 2);
+      } else {
+        roundRectPath(c, e.x, e.y, e.w, e.h, 10);
+      }
+      c.fillStyle = hexToRgba(e.color, .14); c.fill();
+      c.shadowColor = 'transparent';
+      c.strokeStyle = e.color; c.lineWidth = selected ? 2.6 : 1.6; c.stroke();
+      if (!ellipse) {
+        c.fillStyle = e.color;
+        roundRectPath(c, e.x, e.y, 5, e.h, 3); c.fill();
+      }
+    } else if (selected) {
+      roundRectPath(c, e.x - 4, e.y - 3, e.w + 8, e.h + 6, 6);
+      c.fillStyle = hexToRgba(e.color, .12); c.fill();
+    }
+
+    const textX = ellipse ? e.x + e.w / 2 : e.x + (framed ? 13 : 3);
+    c.textAlign = ellipse ? 'center' : 'left';
+    const maxW = e.w - (framed ? 26 : 6);
+    c.fillStyle = framed ? '#eef3ff' : e.color;
+    c.font = '600 14px Segoe UI, sans-serif';
+    const lines = wrapText(c, e.label || '', maxW).slice(0, 2);
+    const labelY = ellipse ? e.y + e.h / 2 - (e.sub ? 4 : 0) : (framed ? e.y + (lines[1] ? 26 : 30) : e.y + 15);
+    c.fillText(lines[0], textX, labelY);
+    if (lines[1]) c.fillText(lines[1], textX, labelY + 16);
+
+    if (e.sub) {
+      c.fillStyle = framed ? '#9fb0d4' : 'rgba(147,161,196,.85)';
+      c.font = '11px Segoe UI, sans-serif';
+      const subY = ellipse ? e.y + e.h / 2 + 14
+        : (framed ? (lines[1] ? labelY + 32 : labelY + 16) : (lines[1] ? labelY + 14 : labelY + 13));
+      wrapText(c, e.sub, maxW).slice(0, 2).forEach((ln, i) => c.fillText(ln, textX, subY + i * 14));
+    }
+    c.restore();
+  }
+
+  function drawArrow(c, e, selected) {
+    c.save();
+    c.strokeStyle = selected ? '#ffffff' : e.color;
+    c.fillStyle = selected ? '#ffffff' : e.color;
+    c.lineWidth = selected ? e.width + 1.5 : e.width;
+    if (e.dashed) c.setLineDash([6, 5]);
+    const ang = Math.atan2(e.y2 - e.y1, e.x2 - e.x1);
+    const len = 10 + e.width;
+    c.beginPath();
+    c.moveTo(e.x1, e.y1);
+    c.lineTo(e.x2 - Math.cos(ang) * len * .6, e.y2 - Math.sin(ang) * len * .6);
+    c.stroke();
+    c.setLineDash([]);
+    c.beginPath();
+    c.moveTo(e.x2, e.y2);
+    c.lineTo(e.x2 - Math.cos(ang - .42) * len, e.y2 - Math.sin(ang - .42) * len);
+    c.lineTo(e.x2 - Math.cos(ang + .42) * len, e.y2 - Math.sin(ang + .42) * len);
+    c.closePath(); c.fill();
+    if (e.note) {
+      c.font = '11px Segoe UI, sans-serif';
+      const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
+      const tw = c.measureText(e.note).width;
+      c.fillStyle = 'rgba(13,20,40,.9)';
+      c.fillRect(mx - tw / 2 - 4, my - 15, tw + 8, 15);
+      c.fillStyle = '#9fb0d4';
+      c.fillText(e.note, mx - tw / 2, my - 4);
+    }
+    c.restore();
+  }
+
+  /* Мазок с учётом нажима и наклона S Pen. Без нажима — обычная линия,
+     как раньше, поэтому старые схемы рисуются идентично. */
+  function pointRadius(point, e) {
+    const p = typeof point.p === 'number' ? Math.min(1, Math.max(0.05, point.p)) : 0.6;
+    return e.width * (0.35 + 1.3 * p) / 2;
+  }
+
+  function drawPath(c, e, selected) {
+    c.save();
+    c.fillStyle = selected ? '#ffffff' : e.color;
+    c.strokeStyle = c.fillStyle;
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    const pts = e.points || [];
+    if (!pts.length) { c.restore(); return; }
+
+    const pressured = pts.some(p => typeof p.p === 'number') && state.penPressure !== false;
+    if (!pressured) {
+      c.lineWidth = e.width;
+      c.beginPath();
+      pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+      if (pts.length === 1) c.lineTo(pts[0].x + .01, pts[0].y);
+      c.stroke(); c.restore(); return;
+    }
+
+    const left = [], right = [];
+    for (let i = 0; i < pts.length; i++) {
+      const prev = pts[Math.max(0, i - 1)], next = pts[Math.min(pts.length - 1, i + 1)];
+      let dx = next.x - prev.x, dy = next.y - prev.y;
+      let len = Math.hypot(dx, dy);
+      if (len < 0.001) { dx = 1; dy = 0; len = 1; }
+      const nx = -dy / len, ny = dx / len;
+      const r = pointRadius(pts[i], e);
+      let skew = 0;
+      if (typeof pts[i].tx === 'number' && typeof pts[i].ty === 'number' && state.penPressure !== false) {
+        const tl = Math.hypot(pts[i].tx, pts[i].ty);
+        if (tl > 0.5) skew = Math.min(1, tl / 90) * ((pts[i].tx / tl) * nx + (pts[i].ty / tl) * ny) * 0.55;
+      }
+      const l = r * (1 + skew), rr = r * (1 - skew);
+      left.push({ x: pts[i].x + nx * l, y: pts[i].y + ny * l });
+      right.push({ x: pts[i].x - nx * rr, y: pts[i].y - ny * rr });
+    }
+    c.beginPath();
+    c.moveTo(left[0].x, left[0].y);
+    left.forEach(p => c.lineTo(p.x, p.y));
+    for (let i = right.length - 1; i >= 0; i--) c.lineTo(right[i].x, right[i].y);
+    c.closePath(); c.fill();
+    c.beginPath(); c.arc(pts[0].x, pts[0].y, pointRadius(pts[0], e), 0, Math.PI * 2); c.fill();
+    const last = pts[pts.length - 1];
+    c.beginPath(); c.arc(last.x, last.y, pointRadius(last, e), 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+
+  function drawElement(c, e, selected) {
+    if (e.type === 'zone') return drawZone(c, e);
+    if (e.type === 'block') return drawBlock(c, e, selected);
+    if (e.type === 'arrow' || e.type === 'line') {
+      if (e.type === 'line') {
+        c.save(); c.strokeStyle = selected ? '#fff' : e.color; c.lineWidth = e.width;
+        c.beginPath(); c.moveTo(e.x1, e.y1); c.lineTo(e.x2, e.y2); c.stroke(); c.restore();
+        return;
+      }
+      return drawArrow(c, e, selected);
+    }
+    if (e.type === 'path') {
+      drawPath(c, e, selected);
+      return;
+    }
+    if (e.type === 'rect' || e.type === 'ellipse') {
+      c.save(); c.strokeStyle = e.color; c.lineWidth = selected ? e.width + 1.5 : e.width;
+      c.fillStyle = hexToRgba(e.color, .09);
+      const x = Math.min(e.x1, e.x2), y = Math.min(e.y1, e.y2);
+      const w = Math.abs(e.x2 - e.x1), h = Math.abs(e.y2 - e.y1);
+      if (e.type === 'rect') roundRectPath(c, x, y, w, h, 8);
+      else { c.beginPath(); c.ellipse(x + w / 2, y + h / 2, Math.max(1, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2); }
+      c.fill(); c.stroke(); c.restore();
+      return;
+    }
+    if (e.type === 'text') {
+      c.save(); c.fillStyle = e.color;
+      c.font = `600 ${e.size}px Segoe UI, sans-serif`;
+      e.text.split('\n').forEach((ln, i) => c.fillText(ln, e.x, e.y + i * (e.size * 1.3)));
+      c.restore();
+      return;
+    }
+    if (e.type === 'note') {
+      c.save();
+      roundRectPath(c, e.x, e.y, e.w, e.h, 6);
+      c.fillStyle = hexToRgba(e.color, .16); c.fill();
+      c.strokeStyle = e.color; c.lineWidth = selected ? 2.5 : 1.4; c.stroke();
+      c.fillStyle = '#eaf0ff'; c.font = '13px Segoe UI, sans-serif';
+      const lines = wrapText(c, e.text, e.w - 18);
+      lines.slice(0, Math.floor((e.h - 14) / 17)).forEach((ln, i) => c.fillText(ln, e.x + 9, e.y + 20 + i * 17));
+      c.restore();
+    }
+  }
+
+  function bbox(e) {
+    if (e.type === 'path') {
+      const xs = e.points.map(p => p.x), ys = e.points.map(p => p.y);
+      const pad = e.points.some(p => typeof p.p === 'number') ? (e.width || 1) : 0;
+      return { x1: Math.min(...xs) - pad, y1: Math.min(...ys) - pad, x2: Math.max(...xs) + pad, y2: Math.max(...ys) + pad };
+    }
+    if (e.type === 'line' || e.type === 'arrow') {
+      return { x1: Math.min(e.x1, e.x2), y1: Math.min(e.y1, e.y2), x2: Math.max(e.x1, e.x2), y2: Math.max(e.y1, e.y2) };
+    }
+    if (e.type === 'rect' || e.type === 'ellipse') {
+      return { x1: Math.min(e.x1, e.x2), y1: Math.min(e.y1, e.y2), x2: Math.max(e.x1, e.x2), y2: Math.max(e.y1, e.y2) };
+    }
+    if (e.type === 'text') {
+      return { x1: e.x, y1: e.y - e.size, x2: e.x + e.text.length * e.size * .62, y2: e.y + e.text.split('\n').length * e.size * 1.3 };
+    }
+    return { x1: e.x, y1: e.y, x2: e.x + e.w, y2: e.y + e.h };
+  }
+
+  function drawGrid(c, view, w, h) {
+    const step = 40;
+    const x0 = Math.floor((-view.x / view.scale) / step) * step;
+    const y0 = Math.floor((-view.y / view.scale) / step) * step;
+    const x1 = (-view.x + w) / view.scale, y1 = (-view.y + h) / view.scale;
+    c.save(); c.strokeStyle = 'rgba(120,150,220,.075)'; c.lineWidth = 1 / view.scale;
+    c.beginPath();
+    for (let x = x0; x < x1; x += step) { c.moveTo(x, y0); c.lineTo(x, y1); }
+    for (let y = y0; y < y1; y += step) { c.moveTo(x0, y); c.lineTo(x1, y); }
+    c.stroke(); c.restore();
+  }
+
+  function drawScene(target, view, w, h, ratio) {
+    target.setTransform(1, 0, 0, 1, 0, 0);
+    target.clearRect(0, 0, target.canvas.width, target.canvas.height);
+    target.setTransform(ratio * view.scale, 0, 0, ratio * view.scale, ratio * view.x, ratio * view.y);
+    if (state.showGrid) drawGrid(target, view, w, h);
+    if (state.showTemplate) state.template.forEach(e => drawElement(target, e, false));
+    state.elements.forEach(e => drawElement(target, e, state.selected === e));
+    if (state.preview) drawElement(target, state.preview, false);
+    if (state.selected && state.tool === 'select') {
+      const b = bbox(state.selected), s = 6 / view.scale;
+      target.save(); target.strokeStyle = '#fff'; target.lineWidth = 1.5 / view.scale;
+      target.strokeRect(b.x1 - s, b.y1 - s, b.x2 - b.x1 + 2 * s, b.y2 - b.y1 + 2 * s);
+      target.restore();
+    }
+  }
+
+  function render() {
+    drawScene(ctx, state.view, cssW, cssH, dpr);
+    $('#zoomLabel').textContent = Math.round(state.view.scale * 100) + '%';
+    $('#countLabel').textContent = 'элементов: ' + state.elements.length;
+    scheduleAutosave();
+  }
+
+  function toWorld(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - r.left - state.view.x) / state.view.scale,
+      y: (clientY - r.top - state.view.y) / state.view.scale
+    };
+  }
+
+  function distToSeg(p, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const t = Math.max(0, Math.min(1, ((p.x - x1) * dx + (p.y - y1) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(p.x - (x1 + t * dx), p.y - (y1 + t * dy));
+  }
+
+  function hit(p, mult) {
+    const tol = 8 * (mult || 1) / state.view.scale;
+    for (let i = state.elements.length - 1; i >= 0; i--) {
+      const e = state.elements[i], b = bbox(e);
+      if (e.type === 'path') {
+        for (let j = 1; j < e.points.length; j++) {
+          if (distToSeg(p, e.points[j - 1].x, e.points[j - 1].y, e.points[j].x, e.points[j].y) < tol + e.width) return e;
+        }
+      } else if (e.type === 'line' || e.type === 'arrow') {
+        if (distToSeg(p, e.x1, e.y1, e.x2, e.y2) < tol + e.width) return e;
+      } else if (p.x >= b.x1 - tol && p.x <= b.x2 + tol && p.y >= b.y1 - tol && p.y <= b.y2 + tol) return e;
+    }
+    return null;
+  }
+
+  function snapshot() {
+    state.history.push(JSON.stringify(state.elements));
+    if (state.history.length > 60) state.history.shift();
+    state.future.length = 0;
+  }
+  function undo() {
+    if (!state.history.length) return;
+    state.future.push(JSON.stringify(state.elements));
+    state.elements = JSON.parse(state.history.pop());
+    state.selected = null; render();
+  }
+  function redo() {
+    if (!state.future.length) return;
+    state.history.push(JSON.stringify(state.elements));
+    state.elements = JSON.parse(state.future.pop());
+    state.selected = null; render();
+  }
+
+  function openEditor(clientX, clientY, initial, multiline, cb, opts = {}) {
+    const ed = $('#editor'), inp = $('#editorInput'), sub = $('#editorSub');
+    state.editor = { cb, multiline, withSub: !!opts.withSub };
+    inp.value = initial || '';
+    inp.style.minHeight = multiline ? '90px' : '42px';
+    sub.value = opts.sub || '';
+    sub.classList.toggle('hidden', !opts.withSub);
+    ed.classList.remove('hidden');
+    dictStatus('');
+    updateDictUI();
+    const left = Math.min(window.innerWidth - 340, Math.max(10, clientX + 10));
+    const top = Math.min(window.innerHeight - (opts.withSub ? 200 : 160), Math.max(10, clientY + 10));
+    ed.style.left = left + 'px'; ed.style.top = top + 'px';
+    (opts.withSub ? sub : inp).focus();
+    if (!opts.withSub) inp.select();
+  }
+  function closeEditor(commit) {
+    const ed = $('#editor'), e = state.editor;
+    if (!e) return;
+    stopDictation();
+    ed.classList.add('hidden'); state.editor = null;
+    if (commit) e.cb($('#editorInput').value.trim(), $('#editorSub').value.trim());
+  }
+
+  /* ---------- Диктовка в поля редактора (Web Speech API) ---------- */
+  const DICT_LANGS = [
+    ['ru-RU', 'Русский'], ['uk-UA', 'Українська'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'],
+    ['de-DE', 'Deutsch'], ['fr-FR', 'Français'], ['es-ES', 'Español'], ['it-IT', 'Italiano'],
+    ['pl-PL', 'Polski'], ['pt-BR', 'Português (BR)'], ['tr-TR', 'Türkçe'], ['cs-CZ', 'Čeština'],
+    ['nl-NL', 'Nederlands'], ['zh-CN', '中文'], ['ja-JP', '日本語'], ['ko-KR', '한국어'],
+    ['ar-SA', 'العربية'], ['hi-IN', 'हिन्दी']
+  ];
+  const LANG_KEY = 'archcanvas.dictation.lang';
+  let recognition = null;
+  let dictTarget = null;
+  let dictActive = false;
+
+  function dictLang() { return $('#dictationLang').value; }
+  function updateDictUI() {
+    $('#micTitle').classList.toggle('rec', dictActive && dictTarget === 'title');
+    $('#micSub').classList.toggle('rec', dictActive && dictTarget === 'sub');
+  }
+  function dictStatus(text) { $('#dictationStatus').textContent = text || ''; }
+  function stopDictation() {
+    dictActive = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (_) { /* уже остановлено */ }
+      recognition = null;
+    }
+    dictTarget = null;
+    updateDictUI();
+  }
+  function startDictation(target) {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      dictStatus('Браузер не поддерживает диктовку — откройте в Chrome/Edge');
+      toast('Web Speech API недоступен: используйте Chrome или Edge');
+      return;
+    }
+    if (!state.editor) { toast('Сначала откройте редактор блока'); return; }
+    const field = target === 'sub' ? $('#editorSub') : $('#editorInput');
+    if (field.classList.contains('hidden')) { toast('У этого элемента нет поля описания'); return; }
+    if (dictActive && dictTarget === target) { stopDictation(); dictStatus('Запись остановлена'); return; }
+    stopDictation();
+
+    let rec;
+    try { rec = new SpeechRec(); }
+    catch (err) { dictStatus('Не удалось запустить распознавание: ' + err.message); return; }
+    rec.lang = dictLang();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+
+    const base = field.value.trimEnd() + (field.value.trim() ? ' ' : '');
+    let finalText = '';
+    rec.onresult = ev => {
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const item = ev.results[i];
+        if (item.isFinal) finalText += item[0].transcript;
+        else interim += item[0].transcript;
+      }
+      field.value = base + (finalText + interim).replace(/^\s+/, '');
+      dictStatus('Слушаю (' + rec.lang + ')… ' + (interim ? '«' + interim.trim() + '»' : 'говорите'));
+    };
+    rec.onerror = ev => {
+      const messages = {
+        'not-allowed': 'Доступ к микрофону запрещён — разрешите его в браузере',
+        'service-not-allowed': 'Сервис распознавания недоступен',
+        'audio-capture': 'Микрофон не найден',
+        'network': 'Нет сети — Chrome распознаёт речь через интернет',
+        'no-speech': 'Речь не распознана — попробуйте ещё раз'
+      };
+      if (ev.error !== 'aborted') dictStatus(messages[ev.error] || ('Ошибка: ' + ev.error));
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed' || ev.error === 'audio-capture') {
+        dictActive = false; recognition = null; updateDictUI();
+      }
+    };
+    rec.onend = () => {
+      if (dictActive && state.editor && !field.classList.contains('hidden')) {
+        try { rec.start(); } catch (_) { stopDictation(); }
+      } else {
+        stopDictation();
+      }
+    };
+
+    recognition = rec;
+    dictTarget = target;
+    dictActive = true;
+    updateDictUI();
+    dictStatus('Слушаю (' + rec.lang + ')…');
+    try { rec.start(); }
+    catch (err) { dictActive = false; recognition = null; dictTarget = null; updateDictUI(); dictStatus('Не удалось запустить: ' + err.message); }
+  }
+
+  DICT_LANGS.forEach(([code, name]) => {
+    [$('#dictationLang'), $('#dictationLangSide')].forEach(sel => {
+      const o = document.createElement('option'); o.value = code; o.textContent = name; sel.appendChild(o);
+    });
+  });
+  const savedLang = localStorage.getItem(LANG_KEY);
+  if (savedLang && DICT_LANGS.some(l => l[0] === savedLang)) {
+    $('#dictationLang').value = savedLang; $('#dictationLangSide').value = savedLang;
+  } else {
+    $('#dictationLang').value = 'ru-RU';
+    $('#dictationLangSide').value = 'ru-RU';
+  }
+  function changeDictLang(value) {
+    $('#dictationLang').value = value;
+    $('#dictationLangSide').value = value;
+    localStorage.setItem(LANG_KEY, value);
+    if (dictActive) {
+      const target = dictTarget;
+      stopDictation();
+      startDictation(target);
+    }
+  }
+  $('#dictationLang').addEventListener('change', e => changeDictLang(e.target.value));
+  $('#dictationLangSide').addEventListener('change', e => changeDictLang(e.target.value));
+  const SpeechCheck = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $('#dictationSupport').textContent = SpeechCheck
+    ? 'Диктовка доступна. Разрешите доступ к микрофону при первом нажатии.'
+    : 'В этом браузере Web Speech API недоступен — используйте Chrome или Edge.';
+  $('#micTitle').addEventListener('click', () => startDictation('title'));
+  $('#micSub').addEventListener('click', () => startDictation('sub'));
+
+  $('#editorOk').addEventListener('click', () => closeEditor(true));
+  $('#editorCancel').addEventListener('click', () => closeEditor(false));
+  $('#editorInput').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && (ev.ctrlKey || !state.editor?.multiline)) { ev.preventDefault(); closeEditor(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); closeEditor(false); }
+  });
+
+  function placeBlock(kind, p) {
+    const k = KINDS[kind];
+    const el = { type: 'block', id: 'u' + (++state.blockSeq), x: p.x - 60, y: p.y - 14, w: 120, h: 22, label: k.label, sub: '', kind, color: k.color, framed: false, shape: 'rect' };
+    fitTextBlock(el);
+    snapshot(); state.elements.push(el); state.selected = el; render();
+    openEditor(canvas.getBoundingClientRect().left + state.view.x + el.x * state.view.scale,
+               canvas.getBoundingClientRect().top + state.view.y + el.y * state.view.scale,
+               k.label, false,
+               (v, sub) => { if (v) el.label = v; el.sub = sub; fitTextBlock(el); render(); },
+               { withSub: true, sub: '' });
+  }
+
+  function capturePointer(ev) {
+    try { canvas.setPointerCapture(ev.pointerId); } catch (_) { /* синтетические события и некоторые браузеры не поддерживают capture */ }
+  }
+
+  function pressurePoint(ev, type) {
+    const p = toWorld(ev.clientX, ev.clientY);
+    if ((type || ev.pointerType) === 'pen') {
+      p.p = typeof ev.pressure === 'number' && ev.pressure > 0
+        ? Math.max(0.05, Math.min(1, ev.pressure)) : 0.5;
+      if (typeof ev.tiltX === 'number' && typeof ev.tiltY === 'number' && (ev.tiltX || ev.tiltY)) {
+        p.tx = ev.tiltX; p.ty = ev.tiltY;
+      }
+    }
+    return p;
+  }
+
+  function showStylus(ev) {
+    state.lastPenAt = performance.now();
+    state.stylus = { pressure: ev.pressure || 0, tiltX: ev.tiltX || 0, tiltY: ev.tiltY || 0 };
+    const tilt = Math.round(Math.hypot(state.stylus.tiltX, state.stylus.tiltY));
+    $('#stylusStatus').textContent = 'S Pen · нажим ' + Math.round(state.stylus.pressure * 100) + '% · наклон ' + tilt + '°';
+    $('#stylusHint').textContent = 'S Pen подключена: нажим ' + Math.round(state.stylus.pressure * 100) + '%, наклон ' + tilt + '°, кнопка ' + (ev.buttons || 0) + '.';
+  }
+
+  function isPenEraser(ev) {
+    return ev.pointerType === 'pen' && (ev.button === 5 || (ev.buttons & 32) !== 0);
+  }
+  function isPenBarrel(ev) {
+    return ev.pointerType === 'pen' && (ev.button === 2 || (ev.buttons & 2) !== 0);
+  }
+  function eraseAt(ev) {
+    const e = hit(toWorld(ev.clientX, ev.clientY), ev.pointerType === 'touch' ? 2.2 : 1.4);
+    if (e) {
+      state.elements = state.elements.filter(x => x !== e);
+      state.selected = null;
+      render();
+    }
+  }
+  function cancelDraw() {
+    if (!state.preview) return;
+    state.preview = null;
+    if (state.drag && state.drag.mode === 'draw') state.history.pop();
+    state.drag = null;
+    render();
+  }
+
+  canvas.addEventListener('pointerdown', ev => {
+    capturePointer(ev);
+    state.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, type: ev.pointerType });
+    if (ev.pointerType === 'pen') { state.penDown = true; showStylus(ev); }
+
+    // Отсечение ладони: касания игнорируются, пока перо активно или только что было
+    if (ev.pointerType === 'touch' && palmReject && (state.penDown || performance.now() - state.lastPenAt < 900)) return;
+
+    // Второй палец отменяет текущую линию и включает жест масштабирования
+    const touches = [...state.pointers.values()].filter(p => p.type === 'touch');
+    if (touches.length >= 2) {
+      cancelDraw();
+      state.gesture = null;
+      return;
+    }
+    if (state.gestureLock) return;
+
+    if (isPenEraser(ev)) {
+      snapshot();
+      state.drag = { mode: 'erase', pointerId: ev.pointerId };
+      state.preview = null;
+      eraseAt(ev);
+      $('#status').textContent = 'Ластик S Pen: проведите по элементу';
+      return;
+    }
+    if (isPenBarrel(ev) || ev.button === 1 || state.space || state.tool === 'hand' || (ev.pointerType === 'touch' && touchMode === 'pan')) {
+      state.drag = { mode: 'pan', pointerId: ev.pointerId, sx: ev.clientX, sy: ev.clientY, vx: state.view.x, vy: state.view.y };
+      $('#status').textContent = isPenBarrel(ev) ? 'Кнопка S Pen: панорама' : 'Панорама';
+      return;
+    }
+    if (ev.button !== 0) return;
+    const p = pressurePoint(ev);
+    const t = state.tool;
+    const touchMult = ev.pointerType === 'touch' ? 2.2 : 1;
+
+    if (t === 'shape') {
+      const e = hit(p, touchMult);
+      if (e && e.type === 'block') {
+        snapshot();
+        const shape = $('#shapeKind').value;
+        if (e.framed !== false && e.shape === shape) e.framed = false;
+        else { e.framed = true; e.shape = shape; }
+        fitTextBlock(e);
+        state.selected = e;
+        render();
+        $('#status').textContent = e.framed ? 'Текст обрамлён в фигуру' : 'Рамка снята — блок снова текстовый';
+      } else {
+        $('#status').textContent = 'Кликните по текстовому блоку, чтобы сделать из него фигуру';
+      }
+      return;
+    }
+    if (t === 'select') {
+      const e = hit(p, touchMult);
+      state.selected = e;
+      if (e) {
+        snapshot();
+        state.drag = {
+          mode: 'move', el: e, pointerId: ev.pointerId, px: p.x, py: p.y,
+          ox: e.x, oy: e.y, ox1: e.x1, oy1: e.y1, ox2: e.x2, oy2: e.y2,
+          pts: e.points ? e.points.map(q => ({ ...q })) : null
+        };
+        capturePointer(ev);
+      }
+      render(); return;
+    }
+    if (t === 'eraser') {
+      const e = hit(p, touchMult);
+      if (e) { snapshot(); state.elements = state.elements.filter(x => x !== e); state.selected = null; render(); }
+      return;
+    }
+    if (t === 'text' || t === 'note') {
+      if (t === 'text') {
+        openEditor(ev.clientX, ev.clientY, '', true, v => {
+          if (!v) return;
+          snapshot();
+          state.elements.push({ type: 'text', x: p.x, y: p.y, text: v, color: state.color, size: state.fontSize });
+          render();
+        });
+      } else {
+        snapshot();
+        const e = { type: 'note', x: p.x, y: p.y, w: 190, h: 100, text: 'Заметка', color: state.color };
+        state.elements.push(e); state.selected = e; render();
+        openEditor(ev.clientX, ev.clientY, '', true, v => { if (v) e.text = v; render(); });
+      }
+      return;
+    }
+    if (KINDS[t]) { placeBlock(t, p); return; }
+
+    snapshot();
+    if (t === 'pen') {
+      state.preview = { type: 'path', points: [p], color: state.color, width: state.width };
+    } else if (t === 'line' || t === 'arrow') {
+      state.preview = { type: t, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: state.color, width: state.width, note: '' };
+    } else if (t === 'rect' || t === 'ellipse') {
+      state.preview = { type: t, x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: state.color, width: state.width };
+    }
+    state.drag = { mode: 'draw', start: p, pointerId: ev.pointerId };
+    capturePointer(ev);
+    render();
+  });
+
+  canvas.addEventListener('pointermove', ev => {
+    const rec = state.pointers.get(ev.pointerId);
+    if (rec) { rec.x = ev.clientX; rec.y = ev.clientY; }
+    if (ev.pointerType === 'pen') showStylus(ev);
+
+    // Два пальца: масштабирование с сохранением точки под жестом + панорама
+    const touches = [...state.pointers.values()].filter(p => p.type === 'touch');
+    if (touches.length >= 2) {
+      const a = touches[0], b = touches[1];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (!state.gesture) {
+        cancelDraw();
+        state.gesture = { d0: dist || 1, mid0: mid, view0: { ...state.view } };
+      } else {
+        const g = state.gesture, r = canvas.getBoundingClientRect();
+        const s0 = g.view0.scale;
+        const s = Math.min(4, Math.max(0.25, s0 * dist / g.d0));
+        const wx = ((g.mid0.x - r.left) - g.view0.x) / s0;
+        const wy = ((g.mid0.y - r.top) - g.view0.y) / s0;
+        state.view.scale = s;
+        state.view.x = (mid.x - r.left) - wx * s;
+        state.view.y = (mid.y - r.top) - wy * s;
+      }
+      render();
+      return;
+    }
+
+    if (!state.drag || state.drag.pointerId !== ev.pointerId) return;
+    const d = state.drag;
+    if (d.mode === 'pan') {
+      state.view.x = d.vx + (ev.clientX - d.sx);
+      state.view.y = d.vy + (ev.clientY - d.sy);
+      $('#status').textContent = Math.round(state.view.scale * 100) + '% · панорама';
+    } else if (d.mode === 'erase') {
+      eraseAt(ev);
+      return;
+    } else if (d.mode === 'move') {
+      const p = toWorld(ev.clientX, ev.clientY);
+      const dx = p.x - d.px, dy = p.y - d.py;
+      if (d.pts) d.el.points = d.pts.map(q => ({ ...q, x: q.x + dx, y: q.y + dy }));
+      else if ('x1' in d.el) { d.el.x1 = d.ox1 + dx; d.el.y1 = d.oy1 + dy; d.el.x2 = d.ox2 + dx; d.el.y2 = d.oy2 + dy; }
+      else { d.el.x = d.ox + dx; d.el.y = d.oy + dy; }
+    } else if (d.mode === 'draw') {
+      const pr = state.preview;
+      if (!pr) return;
+      // getCoalescedEvents даёт всю частоту опроса планшета (S Pen — до 240 Гц)
+      const coalesced = (ev.pointerType === 'pen' && ev.getCoalescedEvents) ? ev.getCoalescedEvents() : [];
+      const list = coalesced.length ? coalesced : [ev];
+      for (const ce of list) {
+        const p = pressurePoint(ce, ev.pointerType);
+        if (pr.type === 'path') {
+          const last = pr.points[pr.points.length - 1];
+          const moved = !last || Math.hypot(p.x - last.x, p.y - last.y) > 0.6 / state.view.scale;
+          const pressureChanged = p.p !== undefined && Math.abs(p.p - (last && last.p !== undefined ? last.p : 0)) > 0.08;
+          if (moved || pressureChanged) pr.points.push(p);
+        } else if ('x2' in pr) { pr.x2 = p.x; pr.y2 = p.y; }
+      }
+    }
+    render();
+  });
+
+  function finishPointer(ev) {
+    state.pointers.delete(ev.pointerId);
+    if (ev.pointerType === 'pen') {
+      state.penDown = false;
+      $('#stylusStatus').textContent = 'S Pen · готова';
+    }
+    if (state.gesture && [...state.pointers.values()].filter(p => p.type === 'touch').length < 2) {
+      state.gesture = null;
+      state.gestureLock = true; // пока не отпущены все пальцы, новую линию не начинаем
+    }
+    const d = state.drag;
+    if (d && d.pointerId === ev.pointerId) {
+      if (d.mode === 'draw' && state.preview) {
+        const pr = state.preview;
+        const valid = pr.type === 'path' ? pr.points.length > 1 : Math.hypot(pr.x2 - pr.x1, pr.y2 - pr.y1) > 4 / state.view.scale;
+        if (valid) state.elements.push(pr);
+        else state.history.pop();
+        state.preview = null;
+      }
+      state.drag = null;
+    }
+    if (!state.pointers.size) state.gestureLock = false;
+    render();
+  }
+  canvas.addEventListener('pointerup', finishPointer);
+  canvas.addEventListener('pointercancel', finishPointer);
+
+  canvas.addEventListener('dblclick', ev => {
+    const e = hit(toWorld(ev.clientX, ev.clientY));
+    if (!e) return;
+    if (e.type === 'block') {
+      snapshot();
+      openEditor(ev.clientX, ev.clientY, e.label, false,
+        (v, sub) => { if (v) e.label = v; e.sub = sub; fitTextBlock(e); render(); },
+        { withSub: true, sub: e.sub || '' });
+    } else if (e.type === 'note' || e.type === 'text') {
+      snapshot();
+      openEditor(ev.clientX, ev.clientY, e.text || '', true, v => {
+        if (e.type === 'note') e.text = v || e.text;
+        else if (v) e.text = v;
+        render();
+      });
+    } else if (e.type === 'arrow') {
+      snapshot();
+      openEditor(ev.clientX, ev.clientY, e.note || '', false, v => { e.note = v; render(); });
+    }
+  });
+
+  canvas.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const sx = ev.clientX - r.left, sy = ev.clientY - r.top;
+    const wx = (sx - state.view.x) / state.view.scale, wy = (sy - state.view.y) / state.view.scale;
+    const f = Math.exp(-ev.deltaY * 0.0015);
+    state.view.scale = Math.min(4, Math.max(0.25, state.view.scale * f));
+    state.view.x = sx - wx * state.view.scale;
+    state.view.y = sy - wy * state.view.scale;
+    render();
+  }, { passive: false });
+
+  function setTool(t) {
+    state.tool = t; state.selected = null;
+    document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+    if (KINDS[t]) {
+      document.querySelectorAll('.pal').forEach(b => b.classList.toggle('active', b.dataset.kind === t));
+    }
+    canvas.dataset.cursor = t === 'hand' || t === 'select' ? 'grab' : (t === 'text' ? 'text' : 'crosshair');
+    render();
+    $('#status').textContent = t === 'select' ? 'Выбор и перемещение элементов' :
+      t === 'shape' ? 'Кликните по текстовой метке, чтобы обрамить её в фигуру' :
+      (KINDS[t] ? `Кликните на холст, чтобы вписать текст: «${KINDS[t].label}»` : 'Инструмент: ' + t);
+  }
+  document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+  const sw = $('#swatches');
+  COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'sw' + (c === state.color ? ' active' : '');
+    b.style.background = c; b.title = c;
+    b.addEventListener('click', () => {
+      state.color = c;
+      sw.querySelectorAll('.sw').forEach(x => x.classList.toggle('active', x === b));
+    });
+    sw.appendChild(b);
+  });
+
+  const pal = $('#palette');
+  Object.entries(KINDS).forEach(([k, v]) => {
+    const b = document.createElement('button');
+    b.className = 'pal'; b.dataset.kind = k;
+    b.innerHTML = `<span class="dot" style="background:${v.color}"></span>${v.label}`;
+    b.addEventListener('click', () => setTool(k));
+    pal.appendChild(b);
+  });
+
+  $('#widthRange').addEventListener('input', e => { state.width = +e.target.value; $('#widthVal').textContent = state.width; });
+  $('#fontRange').addEventListener('input', e => { state.fontSize = +e.target.value; $('#fontVal').textContent = state.fontSize; });
+  $('#showTemplate').addEventListener('change', e => { state.showTemplate = e.target.checked; render(); });
+  $('#showGrid').addEventListener('change', e => { state.showGrid = e.target.checked; render(); });
+  $('#btnClear').addEventListener('click', () => {
+    if (!state.elements.length || confirm('Удалить все элементы вашего слоя?')) {
+      snapshot(); state.elements = []; state.selected = null; render();
+      $('#status').textContent = 'Мой слой очищен — заготовка осталась доступной';
+    }
+  });
+  $('#btnUndo').addEventListener('click', undo);
+  $('#btnRedo').addEventListener('click', redo);
+
+  /* Планшет: настройки, боковая панель и кнопки масштаба */
+  $('#palmReject').checked = palmReject;
+  $('#penPressure').checked = penPressure;
+  $('#touchMode').value = touchMode;
+  $('#palmReject').addEventListener('change', e => {
+    palmReject = e.target.checked; lsSet(PALM_KEY, palmReject);
+    toast(palmReject ? 'Отсечение ладони включено' : 'Отсечение ладони выключено');
+  });
+  $('#penPressure').addEventListener('change', e => {
+    penPressure = e.target.checked; state.penPressure = penPressure;
+    lsSet(PRESSURE_KEY, penPressure); render();
+  });
+  $('#touchMode').addEventListener('change', e => {
+    touchMode = e.target.value; lsSet(TOUCH_KEY, touchMode);
+    $('#status').textContent = touchMode === 'pan' ? 'Один палец — панорама' : 'Один палец — рисование';
+  });
+  function setSide(open) {
+    $('#side').classList.toggle('open', open);
+    $('#sideBackdrop').classList.toggle('show', open);
+  }
+  $('#btnSide').addEventListener('click', () => setSide(!$('#side').classList.contains('open')));
+  $('#btnSideClose').addEventListener('click', () => setSide(false));
+  $('#sideBackdrop').addEventListener('click', () => setSide(false));
+
+  function fit() {
+    const els = state.showTemplate ? state.template.concat(state.elements) : state.elements;
+    if (!els.length) { state.view = { x: 0, y: 0, scale: 1 }; render(); return; }
+    const bs = els.map(bbox);
+    const x1 = Math.min(...bs.map(b => b.x1)) - 40, y1 = Math.min(...bs.map(b => b.y1)) - 40;
+    const x2 = Math.max(...bs.map(b => b.x2)) + 40, y2 = Math.max(...bs.map(b => b.y2)) + 40;
+    const s = Math.min(cssW / (x2 - x1), cssH / (y2 - y1), 1.6);
+    state.view = { scale: s, x: (cssW - (x2 - x1) * s) / 2 - x1 * s, y: (cssH - (y2 - y1) * s) / 2 - y1 * s };
+    render();
+    $('#status').textContent = 'Схема вписана в экран';
+  }
+  $('#btnFit').addEventListener('click', fit);
+  function zoomBy(f) {
+    const cx = cssW / 2, cy = cssH / 2;
+    const wx = (cx - state.view.x) / state.view.scale, wy = (cy - state.view.y) / state.view.scale;
+    const s = Math.min(4, Math.max(0.25, state.view.scale * f));
+    state.view.scale = s;
+    state.view.x = cx - wx * s;
+    state.view.y = cy - wy * s;
+    render();
+  }
+  $('#zoomIn').addEventListener('click', () => zoomBy(1.25));
+  $('#zoomOut').addEventListener('click', () => zoomBy(0.8));
+  $('#zoomFit').addEventListener('click', fit);
+
+  function buildExportCanvas() {
+    const els = state.showTemplate ? state.template.concat(state.elements) : state.elements;
+    const bs = els.length ? els.map(bbox) : [{ x1: 0, y1: 0, x2: 400, y2: 300 }];
+    const pad = 50;
+    const x1 = Math.min(...bs.map(b => b.x1)) - pad, y1 = Math.min(...bs.map(b => b.y1)) - pad;
+    const x2 = Math.max(...bs.map(b => b.x2)) + pad, y2 = Math.max(...bs.map(b => b.y2)) + pad;
+    const scale = 2;
+    const off = document.createElement('canvas');
+    off.width = Math.ceil((x2 - x1) * scale); off.height = Math.ceil((y2 - y1) * scale);
+    const oc = off.getContext('2d');
+    oc.fillStyle = '#0d1428'; oc.fillRect(0, 0, off.width, off.height);
+    drawScene(oc, { x: -x1 * scale, y: -y1 * scale, scale }, off.width / scale, off.height / scale, 1);
+    return off;
+  }
+  function exportPNG() {
+    buildExportCanvas().toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'architecture-canvas.png';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      toast('PNG сохранён — прикрепите его к запросу в Qwen');
+    }, 'image/png');
+  }
+  $('#btnExport').addEventListener('click', exportPNG);
+
+  function currentSchema() {
+    return jsonFromGraph(collectGraph());
+  }
+  function pngDataURL() {
+    try { return buildExportCanvas().toDataURL('image/png'); }
+    catch (_) { return ''; }
+  }
+
+  function collectGraph() {
+    const zones = [
+      ...(state.showTemplate ? state.template.filter(e => e.type === 'zone') : []),
+      ...state.elements.filter(e => e.type === 'zone')
+    ];
+    const zoneOf = p => {
+      const z = zones.find(z => p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h);
+      return z ? z.title : '';
+    };
+    const nodes = [];
+    if (state.showTemplate) state.template.filter(e => e.type === 'block').forEach(e => nodes.push({ ...e, manual: false }));
+    state.elements.filter(e => e.type === 'block').forEach(e => nodes.push({ ...e, manual: true }));
+    nodes.forEach((n, i) => {
+      n.nid = n.id && /^[A-Za-z][A-Za-z0-9_-]*$/.test(n.id) ? n.id : 'n' + (i + 1);
+      n.zone = zoneOf({ x: n.x + n.w / 2, y: n.y + n.h / 2 });
+    });
+    const byLabel = new Map();
+    nodes.forEach(n => byLabel.set(n.label, n));
+
+    function nearestLabel(x, y) {
+      let best = null, bd = Infinity;
+      nodes.forEach(n => {
+        const d = Math.hypot(n.x + n.w / 2 - x, n.y + n.h / 2 - y);
+        if (d < bd) { bd = d; best = n; }
+      });
+      return best && bd < 300 ? best.label : null;
+    }
+
+    const arrows = [];
+    if (state.showTemplate) arrows.push(...state.template.filter(e => e.type === 'arrow'));
+    arrows.push(...state.elements.filter(e => e.type === 'arrow'));
+    const edges = arrows.map((a, i) => {
+      const from = a.fromLabel || nearestLabel(a.x1, a.y1) || '?';
+      const to = a.toLabel || nearestLabel(a.x2, a.y2) || '?';
+      return {
+        id: 'e' + (i + 1), from, to,
+        fromId: byLabel.has(from) ? byLabel.get(from).nid : '?',
+        toId: byLabel.has(to) ? byLabel.get(to).nid : '?',
+        label: a.note || '', dashed: !!a.dashed
+      };
+    });
+    const notes = state.elements
+      .filter(e => e.type === 'note' || e.type === 'text')
+      .map(e => e.text || '').filter(Boolean);
+    return { nodes, edges, notes, zones: zones.map(z => z.title) };
+  }
+
+  function mermaidEsc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\|/g, '&#124;')
+      .replace(/\[/g, '&#91;')
+      .replace(/\]/g, '&#93;')
+      .replace(/[\n\r]/g, ' ')
+      .trim();
+  }
+
+  function mermaidFromGraph(g) {
+    const lines = ['flowchart LR'];
+    const zoneNames = [...new Set(g.nodes.map(n => n.zone).filter(Boolean))];
+    const decl = n => `    ${n.nid}["${mermaidEsc(n.label)}<br/>${mermaidEsc(n.sub)}"]`;
+    if (zoneNames.length) {
+      zoneNames.forEach((z, i) => {
+        lines.push(`  subgraph z${i + 1}["${mermaidEsc(z)}"]`);
+        g.nodes.filter(n => n.zone === z).forEach(n => lines.push(decl(n)));
+        lines.push('  end');
+      });
+      g.nodes.filter(n => !n.zone).forEach(n => lines.push(`  ${n.nid}["${mermaidEsc(n.label)}<br/>${mermaidEsc(n.sub)}"]`));
+    } else {
+      g.nodes.forEach(n => lines.push(decl(n)));
+    }
+    if (g.edges.some(e => e.fromId === '?' || e.toId === '?')) {
+      lines.push('  unknown["не определено на схеме"]');
+    }
+    g.edges.forEach(e => {
+      const ar = e.dashed ? '-.->' : '-->';
+      const a = e.fromId === '?' ? 'unknown' : e.fromId;
+      const b = e.toId === '?' ? 'unknown' : e.toId;
+      lines.push(`  ${a} ${e.label ? ar + '|' + mermaidEsc(e.label) + '|' : ar} ${b}`);
+    });
+    return lines.join('\n');
+  }
+
+  function jsonFromGraph(g) {
+    return {
+      version: 1,
+      legend: {
+        node: 'отдельный компонент системы',
+        edge: 'направленная связь между компонентами',
+        label: 'подпись на связи',
+        dashed: 'асинхронная / опциональная связь'
+      },
+      zones: g.zones,
+      nodes: g.nodes.map(n => ({
+        id: n.nid, label: n.label, type: n.kind,
+        description: n.sub || '', zone: n.zone,
+        source: n.manual ? 'drawn-by-hand' : 'template'
+      })),
+      edges: g.edges.map(e => ({
+        from: e.fromId, fromLabel: e.from, to: e.toId, toLabel: e.to,
+        label: e.label, async: e.dashed
+      })),
+      notes: g.notes
+    };
+  }
+
+  function proseFromGraph(g) {
+    const L = ['Схема архитектуры программной системы.', ''];
+    L.push('Компоненты:');
+    g.nodes.forEach((n, i) => L.push(`${i + 1}. ${n.label}${n.sub ? ' — ' + n.sub : ''}${n.zone ? ' [зона: ' + n.zone + ']' : ''}${n.manual ? ' [добавлено вручную]' : ''}.`));
+    if (g.edges.length) {
+      L.push('', 'Направленные связи:');
+      g.edges.forEach(e => L.push(`- ${e.from} → ${e.to}${e.label ? ' с подписью «' + e.label + '»' : ''}${e.dashed ? ' (асинхронно)' : ''}.`));
+    }
+    if (g.notes.length) { L.push('', 'Пояснения:'); g.notes.forEach(n => L.push('- ' + n)); }
+    return L.join('\n');
+  }
+
+  const TASK = [
+    'ЗАДАНИЕ',
+    '0. Сначала выведи строго JSON извлечения: {"entities":[{"id","label","description"}],"relations":[{"from","to","label"}]} — только то, что реально присутствует в схеме/данных.',
+    '1. Опиши архитектуру: слои, компоненты, синхронные и асинхронные потоки данных.',
+    '2. Отметь сильные стороны и узкие места: точки отказа, узкие места производительности, безопасность, масштабируемость.',
+    '3. Предложи улучшения с приоритетами P0/P1/P2 и укажи, какие компоненты и связи меняются.',
+    '4. В конце выведи уточнённую архитектуру в Mermaid flowchart, сохранив обозначения исходной схемы.'
+  ].join('\n');
+
+  const RULES = [
+    'ПРАВИЛА',
+    '- Entity — отдельный компонент с собственной подписью. Relation — направленная связь между двумя компонентами. Relation label — текст на стрелке.',
+    '- В Mermaid запись «Название<br/>Описание» означает: entity = Название, description = Описание. Стрелки -.-> и --> обе являются связями.',
+    '- Если в запросе есть Mermaid или JSON, считай их источником истины; изображение используй для проверки и уточнения.',
+    '- Не выдумывай компоненты и связи, которых нет в исходных данных.',
+    '- Сначала JSON извлечения, затем анализ. Отвечай на русском языке.'
+  ].join('\n');
+
+  function buildPrompt(variant) {
+    const g = collectGraph();
+    const mermaid = mermaidFromGraph(g);
+    const json = JSON.stringify(jsonFromGraph(g), null, 2);
+    const prose = proseFromGraph(g);
+    if (variant === 'png') {
+      return [
+        'Проанализируй приложенное изображение схемы архитектуры программной системы.',
+        '', 'ВНИМАНИЕ: структурированного описания нет — считай изображение единственным источником данных.',
+        '', RULES, '', TASK, '',
+        'Если подпись или направление стрелки неразличимы, явно напиши «неразличимо» вместо догадки.'
+      ].join('\n');
+    }
+    if (variant === 'mermaid') {
+      return ['Ниже схема архитектуры в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
+    }
+    if (variant === 'json') {
+      return ['Ниже схема архитектуры в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
+    }
+    if (variant === 'prose') {
+      return ['Ниже словесное описание схемы архитектуры (источник истины).', '', prose, '', RULES, '', TASK].join('\n');
+    }
+    return [
+      'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
+      'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
+      '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
+      g.notes.length ? '\nПояснения со схемы:\n' + g.notes.map(n => '- ' + n).join('\n') : '',
+      '', RULES, '', TASK
+    ].join('\n');
+  }
+
+  const FORMATS = [
+    ['combo', 'Комбинированный: PNG + Mermaid + JSON (рекомендуется)'],
+    ['png', 'Только PNG + строгие правила извлечения'],
+    ['mermaid', 'Только Mermaid (текст)'],
+    ['json', 'Только JSON-схема'],
+    ['prose', 'Текстовое описание (без разметки)']
+  ];
+  const fmt = $('#promptFormat');
+  FORMATS.forEach(([v, label]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = label; fmt.appendChild(o);
+  });
+  fmt.value = 'combo';
+
+  function downloadText(name, text, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/plain;charset=utf-8' }));
+    a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  }
+
+  $('#btnPrompt').addEventListener('click', () => {
+    $('#promptText').value = buildPrompt(fmt.value);
+    $('#modal').classList.remove('hidden');
+  });
+  fmt.addEventListener('change', () => { $('#promptText').value = buildPrompt(fmt.value); });
+  $('#promptMmd').addEventListener('click', () => downloadText('architecture.mmd', mermaidFromGraph(collectGraph()), 'text/plain;charset=utf-8'));
+  $('#promptJson').addEventListener('click', () => downloadText('architecture-schema.json', JSON.stringify(jsonFromGraph(collectGraph()), null, 2), 'application/json'));
+  $('#btnPack').addEventListener('click', () => {
+    exportPNG();
+    const g = collectGraph();
+    downloadText('architecture.mmd', mermaidFromGraph(g));
+    downloadText('architecture-schema.json', JSON.stringify(jsonFromGraph(g), null, 2), 'application/json');
+    downloadText('qwen-architecture-prompt.txt', buildPrompt('combo'));
+    toast('Пакет: PNG + Mermaid + JSON + запрос');
+  });
+  $('#promptClose').addEventListener('click', () => $('#modal').classList.add('hidden'));
+  $('#modal').addEventListener('click', ev => { if (ev.target === $('#modal')) $('#modal').classList.add('hidden'); });
+  $('#promptCopy').addEventListener('click', async () => {
+    const text = $('#promptText').value;
+    try { await navigator.clipboard.writeText(text); toast('Запрос скопирован'); }
+    catch {
+      $('#promptText').select(); document.execCommand('copy');
+      toast('Запрос скопирован');
+    }
+  });
+  $('#promptDownload').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([$('#promptText').value], { type: 'text/plain;charset=utf-8' }));
+    a.download = 'qwen-architecture-prompt.txt'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  });
+
+  $('#btnSave').addEventListener('click', () => {
+    const data = { version: 1, elements: state.elements, showTemplate: state.showTemplate, view: state.view };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    a.download = 'architecture-canvas.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('Схема сохранена в JSON');
+  });
+  $('#btnLoad').addEventListener('click', () => $('#fileInput').click());
+  $('#fileInput').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (!Array.isArray(d.elements)) throw new Error('нет поля elements');
+      snapshot(); state.elements = d.elements;
+      if (typeof d.showTemplate === 'boolean') { state.showTemplate = d.showTemplate; $('#showTemplate').checked = d.showTemplate; }
+      if (d.view && Number.isFinite(d.view.scale)) state.view = d.view;
+      state.selected = null; render(); toast('Схема загружена');
+    } catch (err) { toast('Ошибка загрузки: ' + err.message); }
+    e.target.value = '';
+  });
+
+  document.addEventListener('keydown', ev => {
+    if (state.editor && (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'm') {
+      ev.preventDefault(); startDictation(ev.shiftKey ? 'sub' : 'title'); return;
+    }
+    if (state.editor || ev.target.matches('textarea,input')) {
+      if (ev.key === 'Escape' && state.editor) closeEditor(false);
+      return;
+    }
+    if (ev.code === 'Space' && !ev.repeat) { state.space = true; canvas.dataset.cursor = 'grab'; ev.preventDefault(); return; }
+    const k = ev.key.toLowerCase();
+    const map = { v: 'select', p: 'pen', l: 'line', a: 'arrow', r: 'rect', e: 'ellipse', t: 'text', n: 'note', f: 'shape', h: 'hand', d: 'eraser' };
+    if (map[k] && !ev.ctrlKey && !ev.metaKey) { setTool(map[k]); return; }
+    if ((ev.ctrlKey || ev.metaKey) && k === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && k === 'y') { ev.preventDefault(); redo(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && k === 's') { ev.preventDefault(); exportPNG(); return; }
+    if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.selected) {
+      snapshot(); state.elements = state.elements.filter(x => x !== state.selected);
+      state.selected = null; render();
+    }
+    if (ev.key === 'Escape') { state.selected = null; setTool('select'); }
+  });
+  document.addEventListener('keyup', ev => {
+    if (ev.code === 'Space') { state.space = false; canvas.dataset.cursor = state.tool === 'select' ? 'grab' : 'crosshair'; }
+  });
+
+  /* ---------- Пресеты классических архитектур ---------- */
+  function presetToElements(preset, dx, dy) {
+    const out = [];
+    const byKey = new Map();
+    preset.zones.forEach(z => out.push({
+      type: 'zone', x: z.x + dx, y: z.y + dy, w: z.w, h: z.h, title: z.title
+    }));
+    preset.nodes.forEach(node => {
+      const id = 'u' + (++state.blockSeq);
+      byKey.set(node.key, { id, label: node.label, node });
+      out.push({
+        type: 'block', id, x: node.x + dx, y: node.y + dy, w: node.w, h: node.h,
+        label: node.label, sub: node.sub || '', kind: node.kind, color: node.color,
+        framed: true, shape: 'rect'
+      });
+    });
+    preset.edges.forEach(edge => {
+      const a = byKey.get(edge.from), b = byKey.get(edge.to);
+      if (!a || !b) return;
+      const s = a.node, t = b.node;
+      const sx = s.x + s.w / 2 + dx, sy = s.y + s.h / 2 + dy;
+      const tx = t.x + t.w / 2 + dx, ty = t.y + t.h / 2 + dy;
+      let x1 = sx, y1 = sy, x2 = tx, y2 = ty;
+      if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+        const sign = Math.sign(tx - sx) || 1;
+        x1 = sx + sign * s.w / 2; x2 = tx - sign * t.w / 2;
+      } else {
+        const sign = Math.sign(ty - sy) || 1;
+        y1 = sy + sign * s.h / 2; y2 = ty - sign * t.h / 2;
+      }
+      out.push({
+        type: 'arrow', x1, y1, x2, y2, fromLabel: a.label, toLabel: b.label,
+        note: edge.label || '', dashed: !!edge.async, color: '#6f86b8', width: 2
+      });
+    });
+    preset.notes.forEach(n => out.push({
+      type: 'note', x: n.x + dx, y: n.y + dy, w: n.w, h: n.h, text: n.text, color: '#ffb454'
+    }));
+    return out;
+  }
+  const presetSel = $('#presetSelect');
+  if (window.ArchPresets && window.ArchPresets.presets.length) {
+    window.ArchPresets.presets.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      presetSel.appendChild(o);
+    });
+    const showPresetDesc = () => {
+      const p = window.ArchPresets.get(presetSel.value);
+      $('#presetDesc').textContent = p ? p.description : '';
+    };
+    presetSel.addEventListener('change', showPresetDesc);
+    showPresetDesc();
+
+    $('#presetLoad').addEventListener('click', () => {
+      const p = window.ArchPresets.get(presetSel.value);
+      if (!p) return;
+      if (state.elements.length && !confirm('Заменить текущий пользовательский слой пресетом?')) return;
+      snapshot();
+      state.elements = presetToElements(p, 0, 0);
+      state.showTemplate = false;
+      $('#showTemplate').checked = false;
+      state.selected = null;
+      render(); fit();
+      $('#status').textContent = 'Пресет «' + p.name + '» загружен';
+      toast('Пресет загружен: ' + p.nodes.length + ' блоков, ' + p.edges.length + ' связей');
+    });
+    $('#presetAdd').addEventListener('click', () => {
+      const p = window.ArchPresets.get(presetSel.value);
+      if (!p) return;
+      const boxes = state.elements.map(bbox);
+      const dx = boxes.length ? Math.max(...boxes.map(b => b.x2)) + 140 : 0;
+      snapshot();
+      state.elements = state.elements.concat(presetToElements(p, dx, 0));
+      state.selected = null;
+      render(); fit();
+      $('#status').textContent = 'Пресет «' + p.name + '» добавлен справа';
+    });
+  } else {
+    presetSel.disabled = true;
+    $('#presetLoad').disabled = true;
+    $('#presetAdd').disabled = true;
+    $('#presetDesc').textContent = 'Не загружен presets.js';
+  }
+
+  /* ---------- Автосохранение и версии ---------- */
+  $('#btnVersion').addEventListener('click', () => {
+    const snap = currentSnapshot();
+    const versions = lsGet(VERSIONS_KEY, []);
+    versions.unshift(snap);
+    lsSet(VERSIONS_KEY, versions.slice(0, 30));
+    refreshAutosaveUI();
+    toast('Версия сохранена');
+  });
+  $('#btnVersionsExport').addEventListener('click', () => {
+    downloadText('architecture-canvas-versions.json', JSON.stringify(lsGet(VERSIONS_KEY, []), null, 2), 'application/json');
+    toast('История версий выгружена');
+  });
+  $('#btnRestoreVersion').addEventListener('click', () => {
+    const versions = lsGet(VERSIONS_KEY, []);
+    const i = Number($('#versionSelect').value);
+    const snap = versions[i];
+    if (!snap || !Array.isArray(snap.elements)) { toast('Выберите версию'); return; }
+    if (!confirm('Восстановить выбранную версию? Текущий слой будет заменён.')) return;
+    snapshot();
+    state.elements = JSON.parse(JSON.stringify(snap.elements));
+    if (typeof snap.showTemplate === 'boolean') { state.showTemplate = snap.showTemplate; $('#showTemplate').checked = snap.showTemplate; }
+    if (snap.view && Number.isFinite(snap.view.scale)) state.view = snap.view;
+    state.selected = null;
+    state.blockSeq = state.elements.reduce((m, e) => Math.max(m, parseInt(String(e.id || '').replace(/\D/g, ''), 10) || 0), 0);
+    render();
+    toast('Версия восстановлена');
+  });
+  $('#btnDeleteVersion').addEventListener('click', () => {
+    const versions = lsGet(VERSIONS_KEY, []);
+    const i = Number($('#versionSelect').value);
+    if (!versions[i]) { toast('Выберите версию'); return; }
+    versions.splice(i, 1);
+    lsSet(VERSIONS_KEY, versions);
+    refreshAutosaveUI();
+    toast('Версия удалена');
+  });
+
+  /* ---------- C4-валидация ---------- */
+  $('#btnValidate').addEventListener('click', () => {
+    if (!window.ArchCore) { toast('Не загружен core.js'); return; }
+    const r = window.ArchCore.validateC4(currentSchema());
+    const c = r.counts;
+    $('#c4Status').textContent = (r.ok ? 'OK' : 'Есть ошибки') + ` · ошибок ${c.error || 0}, предупреждений ${c.warning || 0}, советов ${c.info || 0}`;
+    const lines = (r.warnings || []).map(w =>
+      `[${w.severity.toUpperCase()}] ${w.code}: ${w.message}` +
+      (w.node ? ` (блок ${w.node})` : '') + (w.edge ? ` (связь ${w.edge})` : ''));
+    $('#c4Report').textContent = [
+      'Результат мягкой C4-валидации (не заменяет экспертную проверку):', '',
+      ...(lines.length ? lines : ['Замечаний нет — схема заполнена полностью.']), '',
+      '--- JSON ---', JSON.stringify(r, null, 2)
+    ].join('\n');
+    $('#c4Modal').classList.remove('hidden');
+  });
+  $('#c4Close').addEventListener('click', () => $('#c4Modal').classList.add('hidden'));
+  $('#c4Modal').addEventListener('click', ev => { if (ev.target === $('#c4Modal')) $('#c4Modal').classList.add('hidden'); });
+
+  /* ---------- GitHub Gist ---------- */
+  const GIST_KEY = 'archcanvas.gist.v1';
+  const savedGist = localStorage.getItem(GIST_KEY);
+  if (savedGist) $('#ghGistId').value = savedGist;
+  function gistFiles() {
+    if (!window.ArchCore) throw new Error('Не загружен core.js');
+    const files = window.ArchCore.makeGistFiles(currentSchema());
+    files['architecture-canvas.json'] = {
+      content: JSON.stringify({
+        version: 1,
+        elements: state.elements,
+        showTemplate: state.showTemplate,
+        view: state.view
+      }, null, 2)
+    };
+    return files;
+  }
+  async function gistRequest(method, url, token, body) {
+    const r = await fetch(url, {
+      method,
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'Bearer ' + token,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.message || r.statusText || ('HTTP ' + r.status));
+    return data;
+  }
+  $('#ghCreate').addEventListener('click', async () => {
+    const token = $('#ghToken').value.trim();
+    if (!token) { $('#ghStatus').textContent = 'Введите токен с правом gist'; return; }
+    $('#ghStatus').textContent = 'Создаём gist…';
+    try {
+      const data = await gistRequest('POST', 'https://api.github.com/gists', token, {
+        description: 'Architecture Canvas — схема, Mermaid, JSON, C4-валидация и промпт',
+        public: false,
+        files: gistFiles()
+      });
+      $('#ghGistId').value = data.id;
+      localStorage.setItem(GIST_KEY, data.id);
+      $('#ghStatus').textContent = 'Готово: ' + data.html_url;
+      toast('Gist создан');
+    } catch (err) { $('#ghStatus').textContent = 'Ошибка: ' + err.message; }
+  });
+  $('#ghUpdate').addEventListener('click', async () => {
+    const token = $('#ghToken').value.trim();
+    const id = $('#ghGistId').value.trim();
+    if (!token || !id) { $('#ghStatus').textContent = 'Нужны токен и ID gist'; return; }
+    $('#ghStatus').textContent = 'Обновляем gist…';
+    try {
+      const data = await gistRequest('PATCH', 'https://api.github.com/gists/' + encodeURIComponent(id), token, {
+        description: 'Architecture Canvas — схема, Mermaid, JSON, C4-валидация и промпт (' + new Date().toISOString() + ')',
+        files: gistFiles()
+      });
+      $('#ghStatus').textContent = 'Обновлено: ' + data.html_url;
+      toast('Gist обновлён');
+    } catch (err) { $('#ghStatus').textContent = 'Ошибка: ' + err.message; }
+  });
+
+  /* ---------- AI-интеграция (OpenAI-совместимый API) ---------- */
+  const savedEndpoint = localStorage.getItem('archcanvas.ai.endpoint');
+  const savedModel = localStorage.getItem('archcanvas.ai.model');
+  if (savedEndpoint) $('#aiEndpoint').value = savedEndpoint;
+  if (savedModel) $('#aiModel').value = savedModel;
+  $('#aiEndpoint').addEventListener('change', e => localStorage.setItem('archcanvas.ai.endpoint', e.target.value.trim()));
+  $('#aiModel').addEventListener('change', e => localStorage.setItem('archcanvas.ai.model', e.target.value.trim()));
+  $('#aiSend').addEventListener('click', async () => {
+    const endpoint = $('#aiEndpoint').value.trim();
+    const model = $('#aiModel').value.trim();
+    const key = $('#aiKey').value.trim();
+    if (!endpoint || !key) { $('#aiStatus').textContent = 'Укажите endpoint и ключ'; return; }
+    $('#aiStatus').textContent = 'Отправляем схему в модель…';
+    try {
+      const prompt = buildPrompt('combo');
+      const image = pngDataURL();
+      const content = [{ type: 'text', text: prompt }];
+      if (image) content.push({ type: 'image_url', image_url: { url: image } });
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body: JSON.stringify({ model: model || 'qwen-vl-max', messages: [{ role: 'user', content }], temperature: 0.2 })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error?.message || ('HTTP ' + r.status));
+      const msg = data.choices?.[0]?.message?.content;
+      $('#aiResponse').value = Array.isArray(msg)
+        ? msg.map(p => p.text || '').join('\n')
+        : (typeof msg === 'string' ? msg : JSON.stringify(data, null, 2));
+      $('#aiStatus').textContent = 'Ответ получен';
+      $('#aiModal').classList.remove('hidden');
+    } catch (err) { $('#aiStatus').textContent = 'Ошибка: ' + err.message; }
+  });
+  $('#aiClose').addEventListener('click', () => $('#aiModal').classList.add('hidden'));
+  $('#aiModal').addEventListener('click', ev => { if (ev.target === $('#aiModal')) $('#aiModal').classList.add('hidden'); });
+  $('#aiCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#aiResponse').value); toast('Ответ скопирован'); }
+    catch { $('#aiResponse').select(); document.execCommand('copy'); toast('Ответ скопирован'); }
+  });
+
+  const restored = restoreAutosave();
+  resize();
+  if (!restored || !state.elements.length) fit();
+  setTool('select');
+  $('#status').textContent = restored
+    ? 'Восстановлена сохранённая схема — продолжайте рисовать'
+    : 'Заготовка архитектуры загружена — рисуйте поверх неё и экспортируйте PNG';
+})();
+</script>
+</body>
+</html>

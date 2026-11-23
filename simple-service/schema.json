@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "legend": {
+    "node": "отдельный компонент системы",
+    "edge": "направленная связь между компонентами",
+    "label": "подпись на связи",
+    "dashed": "асинхронная / опциональная связь"
+  },
+  "zones": [],
+  "nodes": [
+    {
+      "id": "u1",
+      "label": "Клиент (curl/браузер)",
+      "type": "client",
+      "description": "HTTP + JSON",
+      "zone": "",
+      "source": "drawn-by-hand"
+    },
+    {
+      "id": "u2",
+      "label": "Item API",
+      "type": "service",
+      "description": "Node.js HTTP сервис",
+      "zone": "",
+      "source": "drawn-by-hand"
+    },
+    {
+      "id": "u3",
+      "label": "In-memory store",
+      "type": "db",
+      "description": "Map<id, item>",
+      "zone": "",
+      "source": "drawn-by-hand"
+    }
+  ],
+  "edges": [
+    {
+      "from": "u1",
+      "fromLabel": "Клиент (curl/браузер)",
+      "to": "u2",
+      "toLabel": "Item API",
+      "label": "GET/POST /items",
+      "async": false
+    },
+    {
+      "from": "u2",
+      "fromLabel": "Item API",
+      "to": "u3",
+      "toLabel": "In-memory store",
+      "label": "CRUD",
+      "async": false
+    }
+  ],
+  "notes": [
+    "GET /health, GET /items, POST /items"
+  ]
+}

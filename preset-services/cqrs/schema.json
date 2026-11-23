@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "zones": [
+    "COMMAND SIDE",
+    "EVENT BUS",
+    "QUERY SIDE"
+  ],
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Client",
+      "type": "client",
+      "description": "HTTP",
+      "zone": "COMMAND SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "cmdapi",
+      "label": "Command API",
+      "type": "gateway",
+      "description": "POST /commands",
+      "zone": "COMMAND SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "handler",
+      "label": "Command Handler",
+      "type": "service",
+      "description": "агрегат, валидация",
+      "zone": "COMMAND SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "eventstore",
+      "label": "Event Store",
+      "type": "db",
+      "description": "append-only",
+      "zone": "COMMAND SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "bus",
+      "label": "Event Bus",
+      "type": "queue",
+      "description": "RabbitMQ / Kafka",
+      "zone": "EVENT BUS",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "projector",
+      "label": "Projector",
+      "type": "service",
+      "description": "применяет события",
+      "zone": "QUERY SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "readdb",
+      "label": "Read Model DB",
+      "type": "db",
+      "description": "PostgreSQL / ES",
+      "zone": "QUERY SIDE",
+      "source": "preset:cqrs"
+    },
+    {
+      "id": "queryapi",
+      "label": "Query API",
+      "type": "gateway",
+      "description": "GET /items",
+      "zone": "QUERY SIDE",
+      "source": "preset:cqrs"
+    }
+  ],
+  "edges": [
+    {
+      "from": "client",
+      "fromLabel": "Client",
+      "to": "cmdapi",
+      "toLabel": "Command API",
+      "label": "команда",
+      "async": false
+    },
+    {
+      "from": "cmdapi",
+      "fromLabel": "Command API",
+      "to": "handler",
+      "toLabel": "Command Handler",
+      "label": "handle",
+      "async": false
+    },
+    {
+      "from": "handler",
+      "fromLabel": "Command Handler",
+      "to": "eventstore",
+      "toLabel": "Event Store",
+      "label": "append events",
+      "async": false
+    },
+    {
+      "from": "handler",
+      "fromLabel": "Command Handler",
+      "to": "bus",
+      "toLabel": "Event Bus",
+      "label": "publish",
+      "async": true
+    },
+    {
+      "from": "bus",
+      "fromLabel": "Event Bus",
+      "to": "projector",
+      "toLabel": "Projector",
+      "label": "subscribe",
+      "async": true
+    },
+    {
+      "from": "projector",
+      "fromLabel": "Projector",
+      "to": "readdb",
+      "toLabel": "Read Model DB",
+      "label": "upsert",
+      "async": false
+    },
+    {
+      "from": "client",
+      "fromLabel": "Client",
+      "to": "queryapi",
+      "toLabel": "Query API",
+      "label": "запрос",
+      "async": false
+    },
+    {
+      "from": "queryapi",
+      "fromLabel": "Query API",
+      "to": "readdb",
+      "toLabel": "Read Model DB",
+      "label": "SELECT",
+      "async": false
+    }
+  ],
+  "notes": [
+    "Read model может отставать — это нормально (eventual consistency).",
+    "Источник истины — Event Store, а не Read Model."
+  ]
+}

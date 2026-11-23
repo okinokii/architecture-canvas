@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "zones": [
+    "ПРЕЗЕНТАЦИЯ",
+    "ПРИЛОЖЕНИЕ",
+    "ДАННЫЕ"
+  ],
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "Браузер",
+      "type": "client",
+      "description": "HTTP + JSON",
+      "zone": "ПРЕЗЕНТАЦИЯ",
+      "source": "preset:layered"
+    },
+    {
+      "id": "controller",
+      "label": "Controller",
+      "type": "gateway",
+      "description": "парсинг, валидация",
+      "zone": "ПРИЛОЖЕНИЕ",
+      "source": "preset:layered"
+    },
+    {
+      "id": "service",
+      "label": "Service",
+      "type": "service",
+      "description": "бизнес-правила",
+      "zone": "ПРИЛОЖЕНИЕ",
+      "source": "preset:layered"
+    },
+    {
+      "id": "repository",
+      "label": "Repository",
+      "type": "service",
+      "description": "DAO / SQL",
+      "zone": "ПРИЛОЖЕНИЕ",
+      "source": "preset:layered"
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "type": "db",
+      "description": "реляционные данные",
+      "zone": "ДАННЫЕ",
+      "source": "preset:layered"
+    }
+  ],
+  "edges": [
+    {
+      "from": "browser",
+      "fromLabel": "Браузер",
+      "to": "controller",
+      "toLabel": "Controller",
+      "label": "HTTPS",
+      "async": false
+    },
+    {
+      "from": "controller",
+      "fromLabel": "Controller",
+      "to": "service",
+      "toLabel": "Service",
+      "label": "вызов сервиса",
+      "async": false
+    },
+    {
+      "from": "service",
+      "fromLabel": "Service",
+      "to": "repository",
+      "toLabel": "Repository",
+      "label": "вызов DAO",
+      "async": false
+    },
+    {
+      "from": "repository",
+      "fromLabel": "Repository",
+      "to": "postgres",
+      "toLabel": "PostgreSQL",
+      "label": "SQL, транзакция",
+      "async": false
+    }
+  ],
+  "notes": [
+    "Граница транзакции — в Repository. Слои общаются только с соседним слоем."
+  ]
+}

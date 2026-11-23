@@ -1,0 +1,212 @@
+/* Общее ядро: используется браузерной доской и MCP-сервером.
+   Формат схемы: {version, zones, nodes:[{id,label,type,description,zone,source}], edges:[...], notes:[...]} */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.ArchCore = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\|/g, '&#124;')
+      .replace(/\[/g, '&#91;')
+      .replace(/\]/g, '&#93;')
+      .replace(/[\n\r]/g, ' ')
+      .trim();
+  }
+
+  function nodeId(id, i) {
+    return /^[A-Za-z][A-Za-z0-9_-]*$/.test(String(id || '')) ? String(id) : 'n' + (i + 1);
+  }
+
+  function validateC4(schema) {
+    const out = [];
+    const add = (severity, code, message, ref) => out.push(Object.assign({ severity, code, message }, ref || {}));
+    const nodes = Array.isArray(schema && schema.nodes) ? schema.nodes : [];
+    const edges = Array.isArray(schema && schema.edges) ? schema.edges : [];
+    const notes = Array.isArray(schema && schema.notes) ? schema.notes : [];
+    const zones = Array.isArray(schema && schema.zones) ? schema.zones : [];
+
+    const seen = new Set();
+    nodes.forEach((n, i) => {
+      const ref = { node: n && n.id ? n.id : 'n' + (i + 1) };
+      if (!n || !String(n.label || '').trim()) add('error', 'EMPTY_NODE', 'Блок без названия', ref);
+      const id = nodeId(n && n.id, i);
+      if (seen.has(id)) add('error', 'DUPLICATE_ID', 'Повторяющийся id блока: ' + id, ref);
+      seen.add(id);
+      if (!String((n && n.description) || '').trim()) add('warning', 'NO_TECHNOLOGY', 'Не указана технология/описание блока «' + (n && n.label || '?') + '»', ref);
+      if (!String((n && n.zone) || '').trim()) add('info', 'NO_ZONE', 'Блок «' + (n && n.label || '?') + '» не отнесён к зоне/контейнеру', ref);
+    });
+
+    const labels = new Set(nodes.map(n => String((n && n.label) || '')));
+    const known = v => seen.has(String(v)) || labels.has(String(v));
+    edges.forEach((e, i) => {
+      const ref = { edge: i + 1 };
+      const from = String((e && e.fromLabel) || (e && e.from) || '?');
+      const to = String((e && e.toLabel) || (e && e.to) || '?');
+      if (!known(e && e.from) || !known(e && e.to)) {
+        add('error', 'BROKEN_EDGE', 'Связь ссылается на несуществующий блок: ' + from + ' → ' + to, ref);
+      }
+      if (!String((e && e.label) || '').trim()) {
+        add('warning', 'UNLABELED_EDGE', 'Связь без подписи: ' + from + ' → ' + to + ' (уточните протокол или тип данных)', ref);
+      }
+    });
+
+    if (!zones.length) add('warning', 'NO_ZONES', 'Нет зон/контейнеров — трудно понять границы ответственности');
+    const hasTitle = notes.some(n => /^заголовок|^title/i.test(String(n)));
+    const hasLegend = notes.some(n => /^легенда|^legend/i.test(String(n)));
+    if (!hasTitle) add('warning', 'NO_TITLE', 'Нет заметки «Заголовок: …» — добавьте название и scope схемы');
+    if (!hasLegend) add('info', 'NO_LEGEND', 'Нет заметки «Легенда: …» — расшифруйте цвета и типы стрелок');
+    if (nodes.length < 2) add('warning', 'TOO_FEW_NODES', 'В схеме меньше двух блоков');
+
+    const counts = { error: 0, warning: 0, info: 0 };
+    out.forEach(w => { counts[w.severity] = (counts[w.severity] || 0) + 1; });
+    return { ok: counts.error === 0, counts, warnings: out };
+  }
+
+  function toMermaid(schema) {
+    const nodes = Array.isArray(schema && schema.nodes) ? schema.nodes : [];
+    const edges = Array.isArray(schema && schema.edges) ? schema.edges : [];
+    const lines = ['flowchart LR'];
+    const ids = nodes.map((n, i) => nodeId(n && n.id, i));
+    const zoneNames = [...new Set(nodes.map(n => String((n && n.zone) || '').trim()).filter(Boolean))];
+    const decl = (n, id) => '    ' + id + '["' + esc(n && n.label) + '<br/>' + esc(n && n.description) + '"]';
+
+    if (zoneNames.length) {
+      zoneNames.forEach((z, i) => {
+        lines.push('  subgraph z' + (i + 1) + '["' + esc(z) + '"]');
+        nodes.forEach((n, j) => { if (String((n && n.zone) || '').trim() === z) lines.push(decl(n, ids[j])); });
+        lines.push('  end');
+      });
+      nodes.forEach((n, j) => { if (!String((n && n.zone) || '').trim()) lines.push(decl(n, ids[j])); });
+    } else {
+      nodes.forEach((n, j) => lines.push(decl(n, ids[j])));
+    }
+
+    const byId = new Map();
+    const byLabel = new Map();
+    nodes.forEach((n, i) => {
+      const id = nodeId(n && n.id, i);
+      const label = String((n && n.label) || 'n' + (i + 1));
+      byId.set(id, label);
+      byLabel.set(label, id);
+    });
+    edges.forEach((e, i) => {
+      const fromRaw = String((e && e.from) || '');
+      const toRaw = String((e && e.to) || '');
+      const a = byId.has(fromRaw) ? fromRaw
+        : (byLabel.has(fromRaw) ? byLabel.get(fromRaw) : (byLabel.get(String((e && e.fromLabel) || '')) || 'unknown'));
+      const b = byId.has(toRaw) ? toRaw
+        : (byLabel.has(toRaw) ? byLabel.get(toRaw) : (byLabel.get(String((e && e.toLabel) || '')) || 'unknown'));
+      const ar = e && e.async ? '-.->' : '-->';
+      const label = esc(e && e.label);
+      lines.push('  ' + a + ' ' + (label ? ar + '|' + label + '|' : ar) + ' ' + b);
+    });
+    if (lines.some(l => l.includes('unknown'))) lines.splice(1, 0, '  unknown["не определено на схеме"]');
+    return lines.join('\n');
+  }
+
+  function compactSchema(schema) {
+    return {
+      version: 1,
+      zones: Array.isArray(schema && schema.zones) ? schema.zones : [],
+      nodes: (Array.isArray(schema && schema.nodes) ? schema.nodes : []).map(n => ({
+        id: String((n && n.id) || ''),
+        label: String((n && n.label) || ''),
+        type: String((n && n.type) || ''),
+        description: String((n && n.description) || ''),
+        zone: String((n && n.zone) || '')
+      })),
+      edges: (Array.isArray(schema && schema.edges) ? schema.edges : []).map(e => ({
+        from: String((e && e.from) || ''),
+        fromLabel: String((e && e.fromLabel) || ''),
+        to: String((e && e.to) || ''),
+        toLabel: String((e && e.toLabel) || ''),
+        label: String((e && e.label) || ''),
+        async: !!(e && e.async)
+      })),
+      notes: Array.isArray(schema && schema.notes) ? schema.notes : []
+    };
+  }
+
+  const RULES = [
+    'ПРАВИЛА',
+    '- Entity — отдельный компонент с собственной подписью. Relation — направленная связь между двумя компонентами. Relation label — текст на стрелке.',
+    '- В Mermaid запись «Название<br/>Описание» означает: entity = Название, description = Описание. Стрелки -.-> и --> обе являются связями.',
+    '- Если в запросе есть Mermaid или JSON, считай их источником истины; изображение используй для проверки и уточнения.',
+    '- Не выдумывай компоненты и связи, которых нет в исходных данных.',
+    '- Сначала JSON извлечения, затем анализ. Отвечай на русском языке.'
+  ].join('\n');
+
+  const TASK = [
+    'ЗАДАНИЕ',
+    '0. Сначала выведи строго JSON извлечения: {"entities":[{"id","label","description"}],"relations":[{"from","to","label"}]} — только то, что реально присутствует в схеме/данных.',
+    '1. Опиши архитектуру: слои, компоненты, синхронные и асинхронные потоки данных.',
+    '2. Отметь сильные стороны и узкие места: точки отказа, узкие места производительности, безопасность, масштабируемость.',
+    '3. Предложи улучшения с приоритетами P0/P1/P2 и укажи, какие компоненты и связи меняются.',
+    '4. В конце выведи уточнённую архитектуру в Mermaid flowchart, сохранив обозначения исходной схемы.'
+  ].join('\n');
+
+  function prose(schema) {
+    const s = compactSchema(schema);
+    const L = ['Схема архитектуры программной системы.', '', 'Компоненты:'];
+    s.nodes.forEach((n, i) => L.push((i + 1) + '. ' + n.label + (n.description ? ' — ' + n.description : '') + (n.zone ? ' [зона: ' + n.zone + ']' : '') + '.'));
+    if (s.edges.length) {
+      L.push('', 'Направленные связи:');
+      s.edges.forEach(e => L.push('- ' + (e.fromLabel || e.from) + ' → ' + (e.toLabel || e.to) + (e.label ? ' с подписью «' + e.label + '»' : '') + (e.async ? ' (асинхронно)' : '') + '.'));
+    }
+    if (s.notes.length) { L.push('', 'Пояснения:'); s.notes.forEach(n => L.push('- ' + String(n))); }
+    return L.join('\n');
+  }
+
+  function buildPrompt(schema, variant) {
+    const mermaid = toMermaid(schema);
+    const json = JSON.stringify(compactSchema(schema), null, 2);
+    const notes = (Array.isArray(schema && schema.notes) ? schema.notes : []).map(String);
+    if (variant === 'png') {
+      return ['Проанализируй приложенное изображение схемы архитектуры.', '',
+        'ВНИМАНИЕ: структурированного описания нет — считай изображение единственным источником данных.', '',
+        RULES, '', TASK, '', 'Если подпись или направление стрелки неразличимы, напиши «неразличимо» вместо догадки.'].join('\n');
+    }
+    if (variant === 'mermaid') return ['Ниже схема в формате Mermaid (источник истины).', '', '```mermaid', mermaid, '```', '', RULES, '', TASK].join('\n');
+    if (variant === 'json') return ['Ниже схема в формате JSON (источник истины).', '', '```json', json, '```', '', RULES, '', TASK].join('\n');
+    if (variant === 'prose') return ['Ниже словесное описание схемы (источник истины).', '', prose(schema), '', RULES, '', TASK].join('\n');
+    return [
+      'Проанализируй архитектуру системы. К сообщению приложено изображение схемы, а ниже — те же данные в двух машиночитаемых форматах.',
+      'Порядок приоритета данных: JSON > Mermaid > изображение. Изображение нужно для проверки компоновки и подписей.',
+      '', 'Mermaid:', '', '```mermaid', mermaid, '```', '', 'JSON:', '', '```json', json, '```',
+      notes.length ? '\nПояснения со схемы:\n' + notes.map(n => '- ' + n).join('\n') : '',
+      '', RULES, '', TASK
+    ].join('\n');
+  }
+
+  function makeGistFiles(schema) {
+    return {
+      'architecture-schema.json': { content: JSON.stringify(compactSchema(schema), null, 2) },
+      'architecture.mmd': { content: toMermaid(schema) },
+      'qwen-prompt.txt': { content: buildPrompt(schema, 'combo') },
+      'c4-validation.txt': { content: JSON.stringify(validateC4(schema), null, 2) },
+      'README.md': {
+        content: [
+          '# Architecture Canvas export',
+          '',
+          'Схема собрана в Architecture Canvas (один HTML-файл, офлайн).',
+          '',
+          '- `architecture-schema.json` — компактная JSON-схема (nodes/edges/notes)',
+          '- `architecture.mmd` — Mermaid flowchart',
+          '- `qwen-prompt.txt` — готовый запрос для Qwen (PNG + Mermaid + JSON)',
+          '- `c4-validation.txt` — результат мягкой C4-валидации',
+          '',
+          'Прикрепите PNG со схемы к запросу в Qwen и вставьте текст из `qwen-prompt.txt`.'
+        ].join('\n')
+      }
+    };
+  }
+
+  return { validateC4, toMermaid, buildPrompt, compactSchema, makeGistFiles, prose };
+});
