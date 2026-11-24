@@ -31,6 +31,7 @@ jobs:
         run: |
           mkdir -p public
           cp architecture-canvas/index.html architecture-canvas/core.js architecture-canvas/presets.js public/
+          cp LICENSE public/
 
       # actions/deploy-pages требует ровно один артефакт с именем github-pages.
       # После rerun старые артефакты остаются — удаляем их заранее.

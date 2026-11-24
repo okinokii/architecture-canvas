@@ -10,8 +10,8 @@ android {
         applicationId 'com.okinokii.archcanvas'
         minSdk 24
         targetSdk 35
-        versionCode 2
-        versionName '1.1.2'
+        versionCode 3
+        versionName '1.1.3'
     }
 
     buildTypes {
@@ -41,6 +41,12 @@ tasks.register('copyCanvasAssets', Copy) {
     into 'src/main/assets'
 }
 
+// Лицензия нужна внутри APK: меню «Справка → Лицензия MIT» открывает её локально.
+tasks.register('copyLicenseAsset', Copy) {
+    from new File(rootProject.projectDir, '../LICENSE')
+    into 'src/main/assets'
+}
+
 tasks.named('preBuild') {
-    dependsOn 'copyCanvasAssets'
+    dependsOn 'copyCanvasAssets', 'copyLicenseAsset'
 }

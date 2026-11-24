@@ -22,10 +22,12 @@ android/
 
 ## Готовый APK из GitHub Actions
 
-Автоматический выпуск APK приостановлен: workflow больше не запускается на теги и пуш.
+Сборка запускается **вручную**: репозиторий → [Actions → Android APK](https://github.com/okinokii/architecture-canvas/actions/workflows/android.yml) → **Run workflow**. Готовые APK также лежат в [релизах](https://github.com/okinokii/architecture-canvas/releases) (последний — `v1.1.3`).
 
-1. Откройте репозиторий → **Actions** → **Android APK** → **Run workflow** — сборка запускается только вручную.
-2. Дождитесь сборки и скачайте артефакт `architecture-canvas-apk` (внутри `app-debug.apk` и `app-release-unsigned` с подписью debug-ключом — оба пригодны для side-load).
+1. Откройте [репозиторий на GitHub](https://github.com/okinokii/architecture-canvas) → **Actions** → **Android APK** → **Run workflow**.
+2. Дождитесь сборки и скачайте артефакт `architecture-canvas-apk` с файлами `app-debug.apk` и `app-release.apk` (подпись debug-ключом, пригодны для side-load).
+
+Инструкция по доске доступна прямо в приложении: меню **«Справка → Как пользоваться»**. Онлайн-версия: https://okinokii.github.io/architecture-canvas/ .
 
 ## Сборка локально
 

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:,">
 <title>Architecture Canvas — заготовка + рисунок → запрос для Qwen</title>
 <style>
   :root {
@@ -228,16 +229,16 @@
     transition: opacity .2s; pointer-events: none;
   }
   #toast.show { opacity: 1; }
-  #modal, #c4Modal, #aiModal, #presetModal, #builderModal {
+  #modal, #c4Modal, #aiModal, #presetModal, #builderModal, #helpModal {
     position: fixed; inset: 0; background: rgba(4,8,18,.72);
     display: grid; place-items: center; z-index: 80; padding: 20px;
   }
-  #modal .box, #c4Modal .box, #aiModal .box, #presetModal .box, #builderModal .box {
+  #modal .box, #c4Modal .box, #aiModal .box, #presetModal .box, #builderModal .box, #helpModal .box {
     width: min(760px, 100%); max-height: 86vh; display: flex; flex-direction: column;
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
   }
   #builderModal .box { width: min(980px, 100%); }
-  #modal h3, #c4Modal h3, #aiModal h3, #presetModal h3, #builderModal h3 { margin: 0 0 10px; font-size: 15px; }
+  #modal h3, #c4Modal h3, #aiModal h3, #presetModal h3, #builderModal h3, #helpModal h3 { margin: 0 0 10px; font-size: 15px; }
   .builder-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
   .builder-tabs .btn { padding: 6px 11px; font-size: 12px; }
   .builder-tabs .btn.active { background: #1d2c50; border-color: var(--accent); color: #fff; }
@@ -276,7 +277,7 @@
     border-radius: 9px; padding: 12px; font: 12px/1.55 Consolas, "Cascadia Code", monospace;
     resize: vertical;
   }
-  #modal .ma, #c4Modal .ma, #aiModal .ma, #presetModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #modal .ma, #c4Modal .ma, #aiModal .ma, #presetModal .ma, #helpModal .ma { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   @media (max-width: 1100px) {
     #app { grid-template-columns: 56px 1fr 224px; }
     header .tag { display: none; }
@@ -839,6 +840,34 @@
       <button class="btn" id="aiClose">Закрыть</button>
       <button class="btn primary" id="aiCopy">Скопировать</button>
     </div>
+  </div>
+</div>
+
+<div id="helpModal" class="hidden">
+  <div class="box" style="width:min(680px,100%)">
+    <h3>Справка: как пользоваться доской</h3>
+    <div style="overflow:auto;min-height:0;font-size:13px;line-height:1.6;padding-right:4px">
+      <div class="hint">Доска работает офлайн: рисуем схему → проверяем связи → выгружаем PNG / Mermaid / JSON / запрос для ИИ. Всё сохраняется автоматически в этом браузере.</div>
+      <ol style="margin:10px 0 0;padding-left:22px">
+        <li>Выберите тип блока в панели «Работа» и кликните по холсту — или просто <b>перетащите плитку</b> на холст: активный инструмент не сменится.</li>
+        <li>Двойной клик по блоку открывает редактор: название, описание, тип, размер. Стрелка создаётся инструментом <b>A</b>; двойной клик по ней меняет подпись и тип связи (<code>SYNC / ASYNC / DATA / AUTH / EVT / DEP</code>).</li>
+        <li>Готовые шаблоны — кнопка <b>«🏛 Пресеты»</b> (31 вариант, включая карту этого приложения). Конструктор <b>«🧱 Конструктор»</b> собирает схему из пространств, кубиков и связей.</li>
+        <li>Проверьте схему кнопкой <b>«🔎 Проверить схему»</b> или пунктом меню «Схема» — отчёт покажет висячие концы, петли, дубли и циклы.</li>
+        <li>В меню <b>«Экспорт»</b> сохраните PNG, JSON, Mermaid или готовый запрос. Для модели прикрепите PNG и вставьте запрос; варианты <code>combo</code> и <code>png</code> используют изображение, текстовые — нет.</li>
+        <li>Меню <b>«AI»</b> отправляет схему в OpenAI-совместимый API. Разрешены HTTPS и localhost; ключ не сохраняется и удаляется после ответа.</li>
+      </ol>
+      <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:14px 0 4px">Горячие клавиши</h2>
+      <div class="hint"><code>V</code> выбор · <code>P</code> карандаш · <code>L</code> линия · <code>A</code> стрелка · <code>R</code> прямоугольник · <code>E</code> эллипс · <code>T</code> текст · <code>N</code> заметка · <code>F</code> фигура · <code>H</code>/пробел панорама · <code>Ctrl+Z/Y</code> undo/redo · <code>Ctrl+X/C/V/D</code> вырезать/копировать/вставить/дублировать · <code>Ctrl+S</code> PNG · <code>Ctrl+M</code> диктовка.</div>
+      <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);margin:14px 0 4px">Ссылки проекта</h2>
+      <ul style="margin:0;padding-left:22px">
+        <li><a href="https://github.com/okinokii/architecture-canvas" target="_blank" rel="noopener noreferrer">Исходный код на GitHub</a></li>
+        <li><a href="https://okinokii.github.io/architecture-canvas/" target="_blank" rel="noopener noreferrer">Онлайн-версия (GitHub Pages)</a></li>
+        <li><a href="https://github.com/okinokii/architecture-canvas/releases" target="_blank" rel="noopener noreferrer">Релизы и APK для планшета</a></li>
+        <li><a href="https://github.com/okinokii/architecture-canvas/issues" target="_blank" rel="noopener noreferrer">Задать вопрос / сообщить об ошибке</a></li>
+        <li><a href="LICENSE" target="_blank" rel="noopener noreferrer">Лицензия MIT</a> · полная инструкция в <a href="https://github.com/okinokii/architecture-canvas#readme" target="_blank" rel="noopener noreferrer">README на GitHub</a></li>
+      </ul>
+    </div>
+    <div class="ma"><button class="btn" id="helpClose">Закрыть</button></div>
   </div>
 </div>
 
@@ -3648,6 +3677,12 @@
   });
   $('#aiClose').addEventListener('click', () => $('#aiModal').classList.add('hidden'));
   $('#aiModal').addEventListener('click', ev => { if (ev.target === $('#aiModal')) $('#aiModal').classList.add('hidden'); });
+
+  /* Справка внутри приложения: та же инструкция, что в README, плюс ссылки на GitHub. */
+  const openHelp = () => { closeMenus(); $('#helpModal').classList.remove('hidden'); };
+  const openExternal = url => window.open(url, '_blank', 'noopener,noreferrer');
+  $('#helpClose').addEventListener('click', () => $('#helpModal').classList.add('hidden'));
+  $('#helpModal').addEventListener('click', ev => { if (ev.target === $('#helpModal')) $('#helpModal').classList.add('hidden'); });
   $('#aiCopy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#aiResponse').value); toast('Ответ скопирован'); }
     catch { $('#aiResponse').select(); document.execCommand('copy'); toast('Ответ скопирован'); }
@@ -3746,7 +3781,7 @@
   }
   const click = sel => () => $(sel).click();
 
-  /* ---------- Классическое меню: Файл / Правка / Вид / Вставка / Схема / Экспорт / AI ---------- */
+  /* ---------- Меню: Файл / Правка / Вид / Вставка / Схема / Экспорт / AI / Справка ---------- */
   const blockItems = Object.entries(KINDS).map(([k, v]) => ({
     label: '<span class="dot" style="background:' + v.color + '"></span> ' + v.label,
     action: () => insertAtCenter(k)
@@ -3836,6 +3871,16 @@
       { sep: true },
       { label: '🐙 Gist: создать', action: () => { showSideSection('#ghCreate'); $('#ghCreate').click(); } },
       { label: '🐙 Gist: обновить', action: () => { showSideSection('#ghUpdate'); $('#ghUpdate').click(); } }
+    ]},
+    { title: 'Справка', items: [
+      { label: '📖 Как пользоваться', action: openHelp },
+      { sep: true },
+      { label: '🐙 Исходный код на GitHub', action: () => openExternal('https://github.com/okinokii/architecture-canvas') },
+      { label: '🌐 Онлайн-версия', action: () => openExternal('https://okinokii.github.io/architecture-canvas/') },
+      { label: '📦 Релизы и APK', action: () => openExternal('https://github.com/okinokii/architecture-canvas/releases') },
+      { label: '🐛 Сообщить об ошибке', action: () => openExternal('https://github.com/okinokii/architecture-canvas/issues') },
+      { sep: true },
+      { label: '📄 Лицензия MIT', action: () => openExternal('LICENSE') }
     ]}
   ];
 
