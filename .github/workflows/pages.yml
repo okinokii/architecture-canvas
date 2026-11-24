@@ -10,6 +10,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write   # удаляем старые артефакты github-pages перед новой загрузкой
 
 concurrency:
   group: pages
@@ -31,16 +32,24 @@ jobs:
           mkdir -p public
           cp architecture-canvas/index.html architecture-canvas/core.js architecture-canvas/presets.js public/
 
+      # actions/deploy-pages требует ровно один артефакт с именем github-pages.
+      # После rerun старые артефакты остаются — удаляем их заранее.
+      - name: Remove old Pages artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts" --paginate \
+            --jq '.artifacts[] | select(.name == "github-pages") | .id' |
+          while read -r id; do
+            [ -n "$id" ] && gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" >/dev/null
+          done
+
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
-          # Уникальное имя: повторный запуск не должен конфликтовать
-          # со старым артефактом github-pages из предыдущей попытки.
-          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
