@@ -29,7 +29,7 @@
 | `build_ai_prompt` | `path` / `schema`, `variant` | Промпт `combo` (PNG + Mermaid + JSON), `png`, `mermaid`, `json` или `prose`. |
 | `make_gist_files` | `path` / `schema` | Набор файлов для GitHub Gist. |
 | `push_gist` | `path` / `schema`, `token`?, `gistId`?, `public`? | Создать/обновить Gist (токен из аргумента или `GITHUB_TOKEN`). |
-| `list_presets` | `category`? (`architecture` / `process`) | Список из 29 пресетов с категориями, тегами и счётчиками. |
+| `list_presets` | `category`? (`architecture` / `process`) | Список из 31 пресета с категориями, тегами и счётчиками (включая карту приложения и её процессы). |
 | `get_preset` | `id` | Полное описание пресета + JSON-схема + валидация. |
 | `preset_export` | `id`, `format`, `variant` | Экспорт пресета в `schema` / `mermaid` / `prompt` / `gist` / `all`. |
 

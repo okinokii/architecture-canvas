@@ -970,6 +970,113 @@
         note('Заголовок: Запланированное событие → реакция демона → отчёт и уведомление.', 880, 640, 300, 44),
         note('Легенда: EVT — tick, SYNC — вызовы, DATA — результат задачи.', 880, 690, 300, 44)
       ]
+    },
+    {
+      id: 'self-map-architecture',
+      name: 'Карта приложения: Architecture Canvas',
+      description: 'Самопортрет доски: браузер и APK, index.html, core.js, пресеты, автосохранение, MCP, внешние API и CI. Сверено с реальным содержимым репозитория: index.html, core.js, presets.js, project-import.js, mcp-server.js и workflows.',
+      tags: ['self', 'architecture', 'architecture-canvas'],
+      zones: [
+        z('КЛИЕНТЫ И ХОСТИНГ', 40, 80, 300, 620),
+        z('ДОСКА / UI', 380, 80, 330, 620),
+        z('ЯДРО И ДАННЫЕ', 750, 80, 340, 620),
+        z('MCP И ИНТЕГРАЦИИ', 1130, 80, 360, 620),
+        z('CI/CD', 1530, 80, 260, 620)
+      ],
+      nodes: [
+        n('browser', 'Браузер', 'Chrome / Edge / Safari', 'client', 70, 240, 190, 64, 'КЛИЕНТЫ И ХОСТИНГ'),
+        n('pages', 'GitHub Pages', 'статический хостинг', 'gateway', 70, 380, 190, 64, 'КЛИЕНТЫ И ХОСТИНГ'),
+        n('apk', 'APK WebView', 'Galaxy Tab / S Pen', 'client', 70, 520, 190, 64, 'КЛИЕНТЫ И ХОСТИНГ'),
+        n('ui', 'index.html', 'панели, холст, редактор, модалки', 'service', 410, 300, 190, 70, 'ДОСКА / UI'),
+        n('canvas', 'Canvas 2D', 'фигуры, связи, жесты, перо', 'gateway', 410, 470, 190, 64, 'ДОСКА / UI'),
+        n('core', 'core.js', 'Mermaid / C4 / prompt / Gist', 'service', 780, 210, 190, 64, 'ЯДРО И ДАННЫЕ'),
+        n('presets', 'presets.js', '31 сценарий в 2 категориях', 'config', 780, 350, 190, 64, 'ЯДРО И ДАННЫЕ'),
+        n('storage', 'localStorage', 'autosave, версии, настройки', 'db', 780, 490, 190, 64, 'ЯДРО И ДАННЫЕ'),
+        n('mcp', 'mcp-server.js', '11 MCP-инструментов', 'ai', 1160, 210, 200, 64, 'MCP И ИНТЕГРАЦИИ'),
+        n('importjs', 'project-import.js', 'статический разбор проекта', 'worker', 1160, 350, 200, 64, 'MCP И ИНТЕГРАЦИИ'),
+        n('qwen', 'Qwen / LLM', 'OpenAI-совместимый API', 'ai', 1160, 490, 200, 64, 'MCP И ИНТЕГРАЦИИ'),
+        n('gist', 'GitHub Gist', 'публикация схемы', 'external', 1160, 620, 200, 60, 'MCP И ИНТЕГРАЦИИ'),
+        n('speech', 'Web Speech API', 'диктовка в блоки', 'external', 1390, 490, 80, 64, 'MCP И ИНТЕГРАЦИИ'),
+        n('actions', 'GitHub Actions', 'Pages + ручная сборка APK', 'ci', 1560, 300, 190, 64, 'CI/CD')
+      ],
+      edges: [
+        e('browser', 'pages', 'HTTPS'),
+        e('pages', 'ui', 'HTML + JS'),
+        e('apk', 'ui', 'WebView'),
+        e('ui', 'canvas', 'отрисовка и ввод'),
+        e('ui', 'core', 'buildPrompt / validateC4'),
+        e('ui', 'presets', 'get / toSchema'),
+        e('ui', 'storage', 'autosave / версии / тема'),
+        e('ui', 'speech', 'диктовка'),
+        e('core', 'gist', 'makeGistFiles / push_gist'),
+        e('core', 'qwen', 'запрос в модель'),
+        e('mcp', 'core', 'read_schema / validate_c4'),
+        e('mcp', 'presets', 'list_presets / get_preset'),
+        e('mcp', 'importjs', 'import_project'),
+        e('importjs', 'core', 'compactSchema'),
+        e('actions', 'pages', 'deploy from main'),
+        e('actions', 'apk', 'workflow_dispatch')
+      ],
+      notes: [
+        note('Заголовок: Карта приложения Architecture Canvas — браузер, доска, ядро, MCP и CI.', 40, 690, 560, 44),
+        note('Легенда: SYNC — вызовы, DATA — поток данных, EVT — события и триггеры CI, DEP — зависимости.', 620, 690, 600, 44),
+        note('Сверено с реальным кодом: index.html держит UI и холст, core.js — экспорт и валидацию, presets.js — пресеты, mcp-server.js — 11 инструментов, project-import.js — импорт проекта.', 40, 740, 560, 70),
+        note('Связи в UI пока создаются инструментом «→»; перетаскивание связи от блока к блоку ещё не реализовано — это следующая доработка.', 640, 740, 520, 70),
+        note('Pages публикует index.html + core.js + presets.js из main. APK собирается только вручную (workflow_dispatch), версия остаётся v1.1.1.', 1240, 740, 540, 70)
+      ]
+    },
+    {
+      id: 'self-map-processes',
+      category: 'process',
+      name: 'Процессы Architecture Canvas',
+      description: 'Сквозные сценарии самой доски: создание блока перетаскиванием, autosave, валидация, подготовка запроса, отправка в модель, Gist и публикация через CI. Сверено с текущей реализацией.',
+      tags: ['self', 'process', 'architecture-canvas'],
+      zones: [
+        z('ПОЛЬЗОВАТЕЛЬ', 40, 80, 240, 620),
+        z('ДОСКА', 320, 80, 400, 620),
+        z('ЯДРО И ХРАНЕНИЕ', 760, 80, 360, 620),
+        z('ВНЕШНИЕ СЕРВИСЫ', 1160, 80, 320, 620),
+        z('CI/CD', 1520, 80, 260, 620)
+      ],
+      nodes: [
+        n('user', 'Пользователь / S Pen', 'рисует и перетаскивает', 'client', 70, 250, 180, 64, 'ПОЛЬЗОВАТЕЛЬ'),
+        n('palette', 'Палитра «Работа»', 'перетащить блок', 'service', 350, 170, 180, 64, 'ДОСКА'),
+        n('canvas', 'Холст + редактор', 'вводим название/размер', 'gateway', 350, 310, 180, 64, 'ДОСКА'),
+        n('edge', 'Стрелка', 'тип и подпись в редакторе', 'queue', 350, 450, 180, 64, 'ДОСКА'),
+        n('validate', 'C4-валидация', 'проверка связности', 'monitoring', 350, 590, 180, 60, 'ДОСКА'),
+        n('autosave', 'Autosave', '500 мс + версии', 'scheduler', 790, 250, 180, 64, 'ЯДРО И ХРАНЕНИЕ'),
+        n('core', 'core.js', 'Mermaid / JSON / prompt', 'service', 790, 390, 180, 64, 'ЯДРО И ХРАНЕНИЕ'),
+        n('builder', 'Конструктор для ИИ', 'пространства/кубики/связи', 'service', 790, 530, 180, 64, 'ЯДРО И ХРАНЕНИЕ'),
+        n('qwen', 'Qwen / LLM', 'OpenAI-совместимый API', 'ai', 1190, 310, 180, 64, 'ВНЕШНИЕ СЕРВИСЫ'),
+        n('gist', 'GitHub Gist', 'publish / update', 'external', 1190, 450, 180, 64, 'ВНЕШНИЕ СЕРВИСЫ'),
+        n('mcp', 'MCP-агент', 'build_schema / import_project', 'ai', 1190, 590, 180, 64, 'ВНЕШНИЕ СЕРВИСЫ'),
+        n('commit', 'git push main', 'коммит изменений', 'ci', 1540, 250, 180, 64, 'CI/CD'),
+        n('pages', 'GitHub Pages', 'онлайн-доска', 'gateway', 1540, 400, 180, 64, 'CI/CD'),
+        n('apk', 'APK (вручную)', 'обновление приостановлено', 'client', 1540, 550, 180, 64, 'CI/CD')
+      ],
+      edges: [
+        e('user', 'palette', 'перетащить плитку', false, 'event'),
+        e('palette', 'canvas', 'блок на холсте, инструмент не сменился', false, 'data'),
+        e('user', 'edge', 'инструмент «→»', false, 'sync'),
+        e('user', 'validate', 'проверить схему', false, 'sync'),
+        e('canvas', 'autosave', 'изменение состояния', true, 'event'),
+        e('edge', 'validate', 'концы/типы/петли', false, 'sync'),
+        e('builder', 'canvas', 'элементы сразу на доске', false, 'data'),
+        e('validate', 'core', 'validateC4', false, 'sync'),
+        e('autosave', 'core', 'currentSchema', false, 'data'),
+        e('core', 'qwen', 'buildPrompt → ответ модели', false, 'sync'),
+        e('core', 'gist', 'материалы gist', false, 'data'),
+        e('mcp', 'builder', 'build_schema', false, 'sync'),
+        e('commit', 'pages', 'deploy из main', true, 'event'),
+        e('commit', 'apk', 'только workflow_dispatch', true, 'event')
+      ],
+      notes: [
+        note('Заголовок: Процессы Architecture Canvas — от жеста пользователя до публикации и ответа модели.', 40, 690, 560, 44),
+        note('Легенда: SYNC — вызовы, DATA — поток данных, EVT — события и autosave, DEP — триггеры CI.', 620, 690, 600, 44),
+        note('Перетаскивание блоков из панели не меняет активный инструмент. Отпускание вне холста ничего не добавляет.', 40, 740, 500, 70),
+        note('Связи создаются инструментом «→» и редактируются двойным кликом: тип, подпись, привязка концов. Перетаскивание связи от блока запланировано.', 580, 740, 550, 70),
+        note('APK остаётся v1.1.1: автосборка отключена, сборка запускается только вручную.', 1160, 740, 540, 70)
+      ]
     }
   ];
 

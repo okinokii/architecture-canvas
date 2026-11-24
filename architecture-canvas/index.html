@@ -63,6 +63,35 @@
   .btn.ghost { background: transparent; }
   .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 
+  /* ---------- Классическое меню ---------- */
+  .menubar { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  .menu { position: relative; }
+  .menu-top {
+    background: transparent; border: 1px solid transparent; color: var(--text);
+    border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap; font-size: 13px;
+  }
+  .menu-top:hover, .menu.open > .menu-top { background: var(--panel-2); border-color: var(--line); }
+  .menu-pop {
+    position: fixed; z-index: 120; display: none;
+    min-width: 240px; max-width: min(360px, 94vw);
+    max-height: min(70vh, 560px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 16px 38px rgba(0,0,0,.5); padding: 6px;
+  }
+  .menu.open > .menu-pop { display: block; }
+  .menu-pop button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: transparent; border: 0; color: var(--text);
+    text-align: left; padding: 8px 10px; border-radius: 7px;
+    cursor: pointer; white-space: nowrap; font-size: 12px;
+  }
+  .menu-pop button:hover, .menu-pop button:focus-visible { background: #1d2c50; outline: none; color: #fff; }
+  .menu-pop button:disabled { opacity: .4; cursor: default; }
+  .menu-pop hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
+  .menu-key { margin-left: auto; color: var(--muted); font-size: 11px; padding-left: 18px; }
+  .menu-pop .menu-note { color: var(--muted); font-size: 11px; padding: 6px 10px 2px; white-space: normal; }
+  @media (pointer: coarse) { .menu-pop button { padding: 11px 10px; font-size: 13px; } }
+
   #tools {
     grid-area: tools;
     background: var(--panel);
@@ -287,7 +316,8 @@
     }
     header { padding: 0 8px; gap: 8px; overflow-x: auto; scrollbar-width: none; }
     header::-webkit-scrollbar { display: none; }
-    header h1 { font-size: 13px; flex: 0 0 auto; }
+    header h1 { display: none; }
+    header .quick { display: none; }
     header .btn { flex: 0 0 auto; padding: 8px 10px; }
     #btnSide, #btnSideClose { display: inline-block; }
     #tools {
@@ -385,19 +415,23 @@
 <div id="app">
   <header>
     <button class="btn" id="btnSide" title="Панель настроек">☰</button>
+    <div class="menubar" id="menuBar" role="menubar" aria-label="Главное меню"></div>
     <h1>Architecture Canvas</h1>
     <span class="tag">заготовка архитектуры → PNG + запрос для Qwen 3.8</span>
     <div class="spacer"></div>
-    <button class="btn" id="btnUndo" title="Ctrl+Z">↶ Отмена</button>
-    <button class="btn" id="btnRedo" title="Ctrl+Y">↷ Повтор</button>
-    <button class="btn" id="btnFit">Вписать</button>
-    <button class="btn" id="btnLoadTop" title="Загрузить схему из JSON">📂 Импорт</button>
-    <input type="file" id="fileInput" accept="application/json" class="hidden">
-    <button class="btn" id="btnPresetsTop" title="Пресеты архитектур">🏛 Пресеты</button>
-    <button class="btn" id="btnBuilderTop" title="Конструктор кубиков, связей и пространств">🧱 Конструктор</button>
-    <button class="btn" id="btnPrompt">📋 Запрос для Qwen</button>
-    <button class="btn" id="btnPack" title="PNG + Mermaid + JSON + запрос">⬇ Пакет</button>
-    <button class="btn primary" id="btnExport">⬇ Экспорт PNG</button>
+    <button class="btn quick" id="btnUndo" title="Отменить (Ctrl+Z)">↶ Отмена</button>
+    <button class="btn quick" id="btnRedo" title="Повторить (Ctrl+Y)">↷ Повтор</button>
+    <button class="btn primary quick" id="btnExport" title="Экспорт PNG (Ctrl+S)">⬇ Экспорт PNG</button>
+    <!-- Старые кнопки остаются в DOM: меню просто вызывает их обработчики. -->
+    <div class="hidden" id="legacyTopActions">
+      <button class="btn" id="btnFit">Вписать</button>
+      <button class="btn" id="btnLoadTop">Импорт JSON</button>
+      <input type="file" id="fileInput" accept="application/json">
+      <button class="btn" id="btnPresetsTop">Пресеты</button>
+      <button class="btn" id="btnBuilderTop">Конструктор</button>
+      <button class="btn" id="btnPrompt">Запрос для Qwen</button>
+      <button class="btn" id="btnPack">Пакет</button>
+    </div>
   </header>
 
   <div id="tools" title="Инструменты">
@@ -3156,9 +3190,16 @@
     if (state.editor && (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'm') {
       ev.preventDefault(); startDictation(ev.shiftKey ? 'sub' : 'title'); return;
     }
-    if (state.editor || ev.target.matches('textarea,input')) {
+    if (state.editor || (ev.target instanceof Element && ev.target.matches('textarea,input'))) {
       if (ev.key === 'Escape' && state.editor) closeEditor(false);
       return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+      const ck = ev.key.toLowerCase();
+      if (ck === 'x') { ev.preventDefault(); copySelection(true); return; }
+      if (ck === 'c') { ev.preventDefault(); copySelection(false); return; }
+      if (ck === 'v') { ev.preventDefault(); pasteClipboard(false); return; }
+      if (ck === 'd') { ev.preventDefault(); duplicateSelection(); return; }
     }
     if (ev.code === 'Space' && !ev.repeat) { state.space = true; canvas.dataset.cursor = 'grab'; ev.preventDefault(); return; }
     const k = ev.key.toLowerCase();
@@ -3548,6 +3589,237 @@
     render();
     toast(fixed ? 'Привязано концов: ' + fixed : 'Висячих концов рядом с блоками нет');
   });
+
+  /* ---------- Дополнительные функции правки и файлов ---------- */
+  function newProject() {
+    if (!confirm('Создать новый проект? Текущий слой и скрытые блоки заготовки будут очищены. История версий останется.')) return;
+    snapshot();
+    state.elements = [];
+    state.templateHidden = [];
+    applyTemplateHidden();
+    state.selected = null;
+    state.view = { x: 0, y: 0, scale: 1 };
+    render();
+    toast('Новый проект готов');
+  }
+  function deleteSelection() {
+    const e = state.selected;
+    if (!e || isTemplateElement(e)) { toast('Сначала выберите элемент в своём слое'); return; }
+    snapshot();
+    state.elements = state.elements.filter(x => x !== e);
+    state.selected = null; render();
+    toast('Элемент удалён');
+  }
+  let elementClipboard = null;
+  function copySelection(cut) {
+    const e = state.selected;
+    if (!e || isTemplateElement(e)) { toast('Сначала выберите элемент в своём слое'); return; }
+    elementClipboard = JSON.parse(JSON.stringify(e));
+    if (cut) {
+      snapshot();
+      state.elements = state.elements.filter(x => x !== e);
+      state.selected = null; render();
+    }
+    toast(cut ? 'Элемент вырезан' : 'Элемент скопирован');
+  }
+  function pasteClipboard(silent) {
+    if (!elementClipboard) { toast('Буфер правки пуст'); return; }
+    snapshot();
+    const c = JSON.parse(JSON.stringify(elementClipboard));
+    const shift = v => (Number(v) || 0) + 28;
+    if (c.type === 'arrow') { c.x1 = shift(c.x1); c.y1 = shift(c.y1); c.x2 = shift(c.x2); c.y2 = shift(c.y2); }
+    else { c.x = shift(c.x); c.y = shift(c.y); }
+    if (c.type === 'block') c.id = 'u' + (++state.blockSeq);
+    delete c.tid; delete c.hidden; delete c.fromTemplate;
+    state.elements.push(c);
+    state.selected = c; render();
+    if (!silent) toast('Элемент вставлен');
+  }
+  function duplicateSelection() {
+    const e = state.selected;
+    if (!e || isTemplateElement(e)) { toast('Сначала выберите элемент в своём слое'); return; }
+    const saved = elementClipboard;
+    elementClipboard = JSON.parse(JSON.stringify(e));
+    pasteClipboard(true);
+    elementClipboard = saved;
+    toast('Элемент продублирован');
+  }
+  function showSideSection(sel, tab) {
+    setSideTab(tab || 'work');
+    if (window.innerWidth <= 900) setSide(true);
+    const el = $(sel);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function toggleCheck(sel) {
+    const el = $(sel);
+    el.checked = !el.checked;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  function insertAtCenter(kind) {
+    const r = canvas.getBoundingClientRect();
+    placeBlock(kind, toWorld(r.left + r.width / 2, r.top + r.height / 2), { keepTool: true });
+  }
+  function openPreset(id) {
+    $('#presetCategory').value = 'all';
+    $('#presetCategory').dispatchEvent(new Event('change', { bubbles: true }));
+    presetSel.value = id;
+    presetSel.dispatchEvent(new Event('change', { bubbles: true }));
+    $('#presetModal').classList.remove('hidden');
+  }
+  const click = sel => () => $(sel).click();
+
+  /* ---------- Классическое меню: Файл / Правка / Вид / Вставка / Схема / Экспорт / AI ---------- */
+  const blockItems = Object.entries(KINDS).map(([k, v]) => ({
+    label: '<span class="dot" style="background:' + v.color + '"></span> ' + v.label,
+    action: () => insertAtCenter(k)
+  }));
+  const MENU = [
+    { title: 'Файл', items: [
+      { label: '🆕 Новый проект', action: newProject },
+      { sep: true },
+      { label: '📂 Открыть JSON…', action: click('#fileInput') },
+      { label: '💾 Сохранить JSON', action: click('#btnSave') },
+      { sep: true },
+      { label: '＋ Сохранить версию', action: () => { showSideSection('#versionSelect'); $('#btnVersion').click(); } },
+      { label: '⬇ Выгрузить историю версий', action: click('#btnVersionsExport') },
+      { label: '↩ Восстановить версию', action: () => { showSideSection('#versionSelect'); $('#btnRestoreVersion').click(); } },
+      { label: '🗑 Удалить версию', action: () => { showSideSection('#versionSelect'); $('#btnDeleteVersion').click(); } },
+      { sep: true },
+      { label: '🗑 Очистить мой слой', action: click('#btnClear') }
+    ]},
+    { title: 'Правка', items: [
+      { label: '↶ Отменить', key: 'Ctrl+Z', action: undo },
+      { label: '↷ Повторить', key: 'Ctrl+Y', action: redo },
+      { sep: true },
+      { label: '✂ Вырезать', key: 'Ctrl+X', action: () => copySelection(true) },
+      { label: '⧉ Копировать', key: 'Ctrl+C', action: () => copySelection(false) },
+      { label: '📋 Вставить', key: 'Ctrl+V', action: () => pasteClipboard(false) },
+      { label: '⧉ Дублировать', key: 'Ctrl+D', action: duplicateSelection },
+      { label: '🗑 Удалить', key: 'Del', action: deleteSelection },
+      { sep: true },
+      { label: '🔗 Привязать висячие концы', action: click('#btnSnapEdges') },
+      { label: '🧱 Инструкция для ИИ', action: () => { $('#btnBuilderTop').click(); switchBuilderTab('brief'); } }
+    ]},
+    { title: 'Вид', items: [
+      { label: '⤢ Вписать схему', action: fit },
+      { label: '＋ Увеличить', action: () => zoomBy(1.25) },
+      { label: '− Уменьшить', action: () => zoomBy(0.8) },
+      { sep: true },
+      { label: '▦ Сетка на холсте', action: () => toggleCheck('#showGrid') },
+      { label: '🏛 Показывать заготовку', action: () => toggleCheck('#showTemplate') },
+      { sep: true },
+      { label: '🛠 Панель «Работа»', action: () => showSideSection('#sideWork', 'work') },
+      { label: '⚙ Панель «Страница»', action: () => showSideSection('#sidePage', 'page') },
+      { label: '＋ Крупнее интерфейс', action: () => scaleStep(0.05) },
+      { label: '− Мельче интерфейс', action: () => scaleStep(-0.05) }
+    ]},
+    { title: 'Вставка', items: [
+      { label: '🛠 Панель блоков', action: () => showSideSection('#secBlocks', 'work') },
+      { note: 'Блок на холст — активный инструмент не меняется' },
+      ...blockItems,
+      { sep: true },
+      { label: 'T Текст', key: 'T', action: () => setTool('text') },
+      { label: '▤ Заметка', key: 'N', action: () => setTool('note') },
+      { label: '→ Стрелка', key: 'A', action: () => setTool('arrow') },
+      { label: '▭ Прямоугольник', key: 'R', action: () => setTool('rect') },
+      { label: '◯ Эллипс', key: 'E', action: () => setTool('ellipse') },
+      { sep: true },
+      { label: '🧩 Готовые примеры', action: () => showSideSection('#secExamples', 'work') },
+      { label: '🏛 Пресеты и сценарии', action: click('#btnPresetsTop') },
+      { label: '🧱 Конструктор схемы', action: click('#btnBuilderTop') }
+    ]},
+    { title: 'Схема', items: [
+      { label: '🔎 Проверить схему', action: click('#btnValidate') },
+      { label: '🔗 Привязать висячие концы', action: click('#btnSnapEdges') },
+      { sep: true },
+      { label: '🏛 Пресеты и сценарии', action: click('#btnPresetsTop') },
+      { label: '🗺 Карта приложения: архитектура', action: () => openPreset('self-map-architecture') },
+      { label: '🔄 Карта приложения: процессы', action: () => openPreset('self-map-processes') },
+      { sep: true },
+      { label: '🧱 Конструктор схемы', action: click('#btnBuilderTop') },
+      { label: '🔌 Связи блоков', action: () => showSideSection('#secLinks', 'work') }
+    ]},
+    { title: 'Экспорт', items: [
+      { label: '⬇ Экспорт PNG', key: 'Ctrl+S', action: click('#btnExport') },
+      { label: '⬇ JSON-схема', action: click('#promptJson') },
+      { label: '⬇ Mermaid (.mmd)', action: click('#promptMmd') },
+      { label: '⬇ Запрос для Qwen (.txt)', action: click('#promptDownload') },
+      { label: '⬇ Пакет: PNG + Mermaid + JSON', action: click('#btnPack') },
+      { sep: true },
+      { label: '⬇ История версий', action: click('#btnVersionsExport') }
+    ]},
+    { title: 'AI', items: [
+      { label: '📋 Запрос для Qwen', action: click('#btnPrompt') },
+      { label: '🤖 Отправить схему в модель', action: () => { showSideSection('#aiSend'); $('#aiSend').click(); } },
+      { label: '📄 Скопировать ответ модели', action: click('#aiCopy') },
+      { sep: true },
+      { label: '🧱 Инструкция для ИИ', action: () => { $('#btnBuilderTop').click(); switchBuilderTab('brief'); } },
+      { label: '🔎 Проверить схему', action: click('#btnValidate') },
+      { sep: true },
+      { label: '🐙 Gist: создать', action: () => { showSideSection('#ghCreate'); $('#ghCreate').click(); } },
+      { label: '🐙 Gist: обновить', action: () => { showSideSection('#ghUpdate'); $('#ghUpdate').click(); } }
+    ]}
+  ];
+
+  function closeMenus() {
+    document.querySelectorAll('.menu.open').forEach(m => {
+      m.classList.remove('open');
+      m.querySelector('.menu-top').setAttribute('aria-expanded', 'false');
+    });
+  }
+  function openMenu(menu) {
+    const already = menu.classList.contains('open');
+    closeMenus();
+    if (already) return;
+    menu.classList.add('open');
+    menu.querySelector('.menu-top').setAttribute('aria-expanded', 'true');
+    const pop = menu.querySelector('.menu-pop');
+    const r = menu.getBoundingClientRect();
+    pop.style.left = Math.max(6, Math.min(r.left, window.innerWidth - pop.offsetWidth - 6)) + 'px';
+    let top = r.bottom + 4;
+    if (top + pop.offsetHeight > window.innerHeight - 6) top = Math.max(6, r.top - pop.offsetHeight - 4);
+    pop.style.top = top + 'px';
+  }
+  function buildMenu() {
+    const bar = $('#menuBar');
+    MENU.forEach(def => {
+      const menu = document.createElement('div');
+      menu.className = 'menu';
+      menu.setAttribute('role', 'none');
+      const top = document.createElement('button');
+      top.className = 'menu-top';
+      top.type = 'button';
+      top.textContent = def.title;
+      top.setAttribute('role', 'menuitem');
+      top.setAttribute('aria-haspopup', 'true');
+      top.setAttribute('aria-expanded', 'false');
+      top.addEventListener('click', ev => { ev.stopPropagation(); openMenu(menu); });
+      top.addEventListener('pointerenter', () => { if (document.querySelector('.menu.open')) openMenu(menu); });
+      menu.appendChild(top);
+      const pop = document.createElement('div');
+      pop.className = 'menu-pop';
+      pop.setAttribute('role', 'menu');
+      def.items.forEach(item => {
+        if (item.sep) { pop.appendChild(document.createElement('hr')); return; }
+        if (item.note) {
+          const note = document.createElement('div');
+          note.className = 'menu-note'; note.textContent = item.note;
+          pop.appendChild(note); return;
+        }
+        const b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('role', 'menuitem');
+        b.innerHTML = item.label + (item.key ? '<span class="menu-key">' + item.key + '</span>' : '');
+        b.addEventListener('click', () => { closeMenus(); item.action(); });
+        pop.appendChild(b);
+      });
+      menu.appendChild(pop);
+      bar.appendChild(menu);
+    });
+    document.addEventListener('pointerdown', ev => { if (!ev.target.closest('.menu')) closeMenus(); });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeMenus(); });
+    window.addEventListener('resize', closeMenus);
+  }
+  buildMenu();
 
   /* Небольшой локальный API: удобно для автотестов и внешних сценариев. */
   window.ArchCanvas = {
