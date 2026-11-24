@@ -2,7 +2,7 @@
 
 HTML-доска для визуализации архитектуры и подготовки запроса к Qwen 3.8 с поддержкой изображений. Рисование и экспорт живут в `index.html` (без зависимостей, офлайн); общая логика вынесена в `core.js`, а `mcp-server.js` превращает схему в MCP-инструменты для AI-агентов.
 
-Открыть онлайн: https://okinokii.github.io/architecture-canvas/ . Или локально: двойным кликом по `index.html` (интернет не нужен).
+Открыть онлайн: https://okinokii.github.io/architecture-canvas/ . Или локально: двойным кликом по `index.html` (интернет не нужен). Готовый архив с этими тремя файлами, `START.txt` и лицензией — [в релизе](https://github.com/okinokii/architecture-canvas/releases/latest); собрать его локально можно командой `powershell -File ../scripts/make-standalone.ps1`.
 
 ## Как использовать
 

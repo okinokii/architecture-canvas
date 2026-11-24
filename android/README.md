@@ -18,16 +18,18 @@ android/
 └── settings.gradle
 ```
 
-`copyCanvasAssets` копирует `index.html`, `core.js` и `presets.js` из `../architecture-canvas` в `app/src/main/assets`. Таким образом доска остаётся единственным источником кода, а APK — просто способ её доставить на планшет.
+`copyCanvasAssets` копирует `index.html`, `core.js` и `presets.js` из `../architecture-canvas`, а `copyLicenseAsset` — `LICENSE` из корня. Так доска остаётся единственным источником кода, а APK — просто способ доставить её на планшет.
 
-## Готовый APK из GitHub Actions
+## Готовые файлы из GitHub Actions
 
-Сборка запускается **вручную**: репозиторий → [Actions → Android APK](https://github.com/okinokii/architecture-canvas/actions/workflows/android.yml) → **Run workflow**. Готовые APK также лежат в [релизах](https://github.com/okinokii/architecture-canvas/releases) (последний — `v1.1.3`).
+Сборка запускается **вручную**: репозиторий → [Actions → APK и офлайн-архив](https://github.com/okinokii/architecture-canvas/actions/workflows/android.yml) → **Run workflow**. Запуск на теге автоматически прикрепляет файлы к [релизу](https://github.com/okinokii/architecture-canvas/releases/latest).
 
-1. Откройте [репозиторий на GitHub](https://github.com/okinokii/architecture-canvas) → **Actions** → **Android APK** → **Run workflow**.
-2. Дождитесь сборки и скачайте артефакт `architecture-canvas-apk` с файлами `app-debug.apk` и `app-release.apk` (подпись debug-ключом, пригодны для side-load).
+В релизе ровно два файла:
 
-Инструкция по доске доступна прямо в приложении: меню **«Справка → Как пользоваться»**. Онлайн-версия: https://okinokii.github.io/architecture-canvas/ .
+- `ArchitectureCanvas-v*.apk` — установить на планшет;
+- `ArchitectureCanvas-standalone-v*.zip` — распаковать и открыть `index.html` на компьютере.
+
+Артефакт workflow `architecture-canvas-dist` содержит те же файлы. Инструкция по доске доступна в приложении: меню **«Справка → Как пользоваться»**. Онлайн-версия: https://okinokii.github.io/architecture-canvas/ .
 
 ## Сборка локально
 
@@ -36,17 +38,19 @@ android/
 ```powershell
 $env:ANDROID_HOME = "C:\Users\<вы>\AppData\Local\Android\Sdk"
 sdkmanager "platforms;android-35" "build-tools;35.0.0"
-gradle -p android assembleDebug
+gradle -p android assembleRelease
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+APK: `android/app/build/outputs/apk/release/app-release.apk` (подписан debug-ключом, пригоден для side-load).
 
 Установка на планшет:
 
 ```powershell
 adb devices
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
+
+Такой же APK из релиза можно просто открыть на планшете — install via ADB не обязательна.
 
 ## Особенности
 

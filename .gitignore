@@ -11,6 +11,9 @@ Thumbs.db
 *.log
 node_modules/
 
+# Локальные сборки скриптом и CI
+dist/
+
 # Android-сборка (APK генерируется в CI)
 android/.gradle/
 android/local.properties
