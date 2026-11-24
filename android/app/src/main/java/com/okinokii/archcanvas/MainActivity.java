@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);          // автосохранение и версии
         s.setAllowFileAccess(true);            // file:///android_asset/*
-        s.setAllowContentAccess(true);
+        s.setAllowContentAccess(false);        // content:// обёртке не нужен
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);            // учитывать viewport из HTML
         s.setBuiltInZoomControls(false);       // жесты обрабатывает сама доска
@@ -59,9 +59,10 @@ public class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     private static void allowFileUrls(WebSettings s) {
-        // API 30+ метод игнорируется, но на старых планшетах нужен для scripts из assets.
+        // core.js и presets.js лежат рядом с index.html в file:///android_asset/.
+        // Доступа к любым другим origins (и content://) обёртке не нужно.
         s.setAllowFileAccessFromFileURLs(true);
-        s.setAllowUniversalAccessFromFileURLs(true);
+        s.setAllowUniversalAccessFromFileURLs(false);
     }
 
     private void hideSystemBars() {

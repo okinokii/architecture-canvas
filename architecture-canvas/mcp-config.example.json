@@ -4,6 +4,7 @@
       "command": "node",
       "args": ["C:/Users/daniel/Documents/Проект по умолчанию/architecture-canvas/mcp-server.js"],
       "env": {
+        "ARCHCANVAS_MCP_ROOT": "C:/Users/daniel/Documents/Проект по умолчанию",
         "GITHUB_TOKEN": ""
       }
     }

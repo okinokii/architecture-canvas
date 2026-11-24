@@ -8,6 +8,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const readline = require('node:readline');
 const core = require('./core.js');
 const presets = require('./presets.js');
@@ -15,6 +16,36 @@ const projectImport = require('./project-import.js');
 
 const VERSION = '1.1.0';
 const PROTOCOL = '2024-11-05';
+
+/* Все файловые инструменты MCP работают только внутри разрешённого каталога.
+   По умолчанию — рабочая директория процесса; для других каталогов задайте
+   ARCHCANVAS_MCP_ROOT или (явно) ARCHCANVAS_MCP_ALLOW_EXTERNAL=1. */
+const MCP_ROOT = path.resolve(process.env.ARCHCANVAS_MCP_ROOT || process.cwd());
+const ALLOW_EXTERNAL = process.env.ARCHCANVAS_MCP_ALLOW_EXTERNAL === '1';
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+function safePath(value, label) {
+  if (typeof value !== 'string' || !value.trim()) throw fail('Нужно указать ' + label, -32602);
+  const target = path.resolve(value);
+  if (ALLOW_EXTERNAL) return target;
+  let inside = false;
+  try {
+    const rootReal = fs.realpathSync(MCP_ROOT);
+    let targetReal = target;
+    try {
+      targetReal = fs.existsSync(target)
+        ? fs.realpathSync(target)
+        : path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
+    } catch (_) { /* файл ещё не существует */ }
+    const rel = path.relative(rootReal, targetReal);
+    inside = rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+  } catch (_) { inside = false; }
+  if (!inside) {
+    throw fail('Путь вне разрешённого каталога ' + MCP_ROOT +
+      '. Задайте ARCHCANVAS_MCP_ROOT в конфиге MCP или ARCHCANVAS_MCP_ALLOW_EXTERNAL=1 для доступа к другим каталогам.', -32602);
+  }
+  return target;
+}
 
 function fail(message, code) {
   const err = new Error(message);
@@ -31,7 +62,7 @@ function loadSchema(args) {
   if (typeof p !== 'string' || !p.trim()) {
     throw fail('Нужно передать schema (объект) или path к architecture-schema.json', -32602);
   }
-  const resolved = require('node:path').resolve(p);
+  const resolved = safePath(p, 'path к architecture-schema.json');
   let data;
   try { data = JSON.parse(fs.readFileSync(resolved, 'utf8')); }
   catch (e) { throw fail('Не удалось прочитать JSON: ' + e.message, -32602); }
@@ -67,7 +98,7 @@ function buildCustomSchema(args) {
   const edges = links.map(l => {
     const from = String((l && (l.from || l.fromLabel)) || '');
     const to = String((l && (l.to || l.toLabel)) || '');
-    const kind = core.EDGE_KINDS[l && l.kind] ? l.kind : (l && l.async ? 'async' : 'sync');
+    const kind = hasOwn(core.EDGE_KINDS, l && l.kind) ? l.kind : (l && l.async ? 'async' : 'sync');
     return {
       from, fromLabel: from, to, toLabel: to,
       label: String((l && (l.label || l.note)) || ''),
@@ -145,7 +176,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Абсолютный или относительный путь к каталогу проекта' },
-        output: { type: 'string', description: 'Необязательно: путь к файлу, куда записать architecture-schema.json' },
+        output: { type: 'string', description: 'Необязательно: путь к новому файлу внутри каталога path (перезапись запрещена)' },
         maxFiles: { type: 'number', description: 'Необязательно: сколько файлов просмотреть (50–2000, по умолчанию 600)' }
       },
       required: ['path']
@@ -208,13 +239,13 @@ const TOOLS = [
   },
   {
     name: 'push_gist',
-    description: 'Создать или обновить GitHub Gist со схемой. Токен из аргумента или переменной окружения GITHUB_TOKEN.',
+    description: 'Создать или обновить приватный GitHub Gist со схемой. Токен берётся только из GITHUB_TOKEN окружения MCP-сервера; публичный gist требует ARCHCANVAS_ALLOW_PUBLIC_GIST=1.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string' },
         schema: { type: 'object' },
-        token: { type: 'string', description: 'Необязательно: PAT с правом gist' },
+        token: { type: 'string', description: 'Устарело и игнорируется: задайте GITHUB_TOKEN в окружении MCP-сервера' },
         gistId: { type: 'string', description: 'Необязательно: ID существующего gist для обновления' },
         public: { type: 'boolean', default: false }
       }
@@ -225,7 +256,7 @@ const TOOLS = [
 const PRESET_TOOLS = [
   {
     name: 'list_presets',
-    description: 'Список пресетов (29) в двух категориях: architecture — архитектурные шаблоны, process — логические/событийные диаграммы процессов (сообщение → реакция → результат, Saga, outbox, retry/DLQ, инциденты, CI/CD, cron). Можно отфильтровать по category.',
+    description: 'Список пресетов (31) в двух категориях: architecture — архитектурные шаблоны, process — логические/событийные диаграммы процессов (сообщение → реакция → результат, Saga, outbox, retry/DLQ, инциденты, CI/CD, cron). Можно отфильтровать по category.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -275,7 +306,8 @@ const handlers = {
     };
   },
   import_project: args => {
-    const { schema, evidence } = projectImport.importProject(args);
+    const root = safePath(args && args.path, 'путь к каталогу проекта');
+    const { schema, evidence } = projectImport.importProject(Object.assign({}, args, { path: root }));
     const out = {
       schema,
       mermaid: core.toMermaid(schema),
@@ -284,7 +316,7 @@ const handlers = {
       hint: 'Передайте schema пользователю или укажите output — доска понимает этот JSON через «📂 Импорт» на верхней панели.'
     };
     if (args && args.output) {
-      out.file = projectImport.writeSchema(schema, args.output);
+      out.file = projectImport.writeSchema(schema, args.output, root);
       out.hint = 'Файл записан: ' + out.file + '. Откройте доску и нажмите «📂 Импорт», чтобы загрузить схему.';
     }
     return out;
@@ -348,8 +380,11 @@ const handlers = {
   },
   push_gist: async args => {
     const s = loadSchema(args);
-    const token = (args && args.token) || process.env.GITHUB_TOKEN;
-    if (!token) throw fail('Нужен GITHUB_TOKEN или аргумент token с правом gist', -32602);
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (!token) throw fail('Нужен GITHUB_TOKEN в окружении MCP-сервера (аргумент token больше не принимается)', -32602);
+    if ((args && args.public) && process.env.ARCHCANVAS_ALLOW_PUBLIC_GIST !== '1') {
+      throw fail('Публичный gist требует ARCHCANVAS_ALLOW_PUBLIC_GIST=1 в окружении MCP-сервера', -32602);
+    }
     const id = args && args.gistId;
     const url = 'https://api.github.com/gists' + (id ? '/' + encodeURIComponent(id) : '');
     const method = id ? 'PATCH' : 'POST';
@@ -367,7 +402,7 @@ const handlers = {
       body: JSON.stringify(body)
     });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw fail(data.message || ('GitHub HTTP ' + resp.status), -32000);
+    if (!resp.ok) throw fail(String(data.message || ('GitHub HTTP ' + resp.status)).replaceAll(token, '***'), -32000);
     return { id: data.id, url: data.html_url, files: Object.keys(core.makeGistFiles(s)) };
   }
 };
@@ -397,7 +432,7 @@ async function dispatch(msg) {
   if (method === 'tools/call') {
     const name = params && params.name;
     const args = (params && params.arguments) || {};
-    const h = handlers[name];
+    const h = hasOwn(handlers, name) ? handlers[name] : null;
     if (!h) return { jsonrpc: '2.0', id, error: { code: -32602, message: 'Unknown tool: ' + name } };
     try {
       const value = await h(args);

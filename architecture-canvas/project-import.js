@@ -57,9 +57,16 @@ function pretty(value) {
     .trim();
 }
 function rel(root, file) { return path.relative(root, file).replace(/\\/g, '/'); }
+
+/* Общий лимит прочитанного текста за один импорт: до 2000 файлов × 400 КБ
+   легко съедают память и контекст модели. */
+const MAX_TOTAL_READ = 8 * 1024 * 1024;
+let readBudget = MAX_TOTAL_READ;
 function readText(file) {
   try {
-    if (fs.statSync(file).size > 400000) return '';
+    const size = fs.statSync(file).size;
+    if (size > 400000 || size > readBudget) return '';
+    readBudget -= size;
     return fs.readFileSync(file, 'utf8');
   } catch (_) { return ''; }
 }
@@ -128,6 +135,7 @@ function composeServices(root, files) {
 }
 
 function importProject(args) {
+  readBudget = MAX_TOTAL_READ;
   const rawPath = args && args.path;
   if (typeof rawPath !== 'string' || !rawPath.trim()) {
     throw new Error('Нужно указать path — каталог существующего проекта');
@@ -353,10 +361,24 @@ function importProject(args) {
   return { schema, evidence };
 }
 
-function writeSchema(schema, output) {
+function writeSchema(schema, output, root) {
+  const base = path.resolve(root || process.cwd());
   const file = path.resolve(output);
+  let baseReal;
+  try { baseReal = fs.realpathSync(base); }
+  catch (_) { throw new Error('Каталог проекта не найден: ' + base); }
+  let parentReal = path.dirname(file);
+  try { if (fs.existsSync(parentReal)) parentReal = fs.realpathSync(parentReal); } catch (_) { /* новый каталог */ }
+  const relPath = path.relative(baseReal, parentReal);
+  if (relPath === '..' || relPath.startsWith('..' + path.sep) || path.isAbsolute(relPath)) {
+    throw new Error('output должен находиться внутри каталога проекта: ' + base);
+  }
+  const overwrite = process.env.ARCHCANVAS_MCP_ALLOW_OVERWRITE === '1';
+  if (fs.existsSync(file) && !overwrite) {
+    throw new Error('Файл уже существует — удалите его или задайте ARCHCANVAS_MCP_ALLOW_OVERWRITE=1: ' + file);
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(schema, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(file, JSON.stringify(schema, null, 2) + '\n', { encoding: 'utf8', flag: overwrite ? 'w' : 'wx' });
   return file;
 }
 

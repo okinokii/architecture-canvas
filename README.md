@@ -13,7 +13,7 @@
 - **Пресеты**: 31 вариант в двух категориях — 22 архитектуры (классические и современные, плюс Data Lake, ML-сервинг, RAG-чат, IoT, e-commerce, мультирегион, Strangler, наблюдаемость и **карта самого приложения**) и 9 логических/событийных сценариев процессов (сообщение → реакция → результат, платёжный webhook, Saga, outbox, retry/DLQ, инцидент, CI/CD, cron и **процессы приложения**). Карта/процессы сверены с реальным состоянием репозитория: `index.html`, `core.js`, `presets.js`, `mcp-server.js`, `project-import.js`, localStorage, Pages и ручная сборка APK. Открываются кнопкой **«🏛 Пресеты»** на верхней панели или пунктами «Схема → Карта приложения…», там же есть фильтр по категории.
 - **Связи блоков**: шесть типов (`SYNC`, `ASYNC`, `DATA`, `AUTH`, `EVT`, `DEP`), автоматическая привязка концов к блокам, зелёная галочка на корректной связи и красный крестик на висячей. Валидация ловит висячие концы, петли, дубли, противоречия типов и циклы зависимостей.
 - **Сквозной тест**: по нарисованной схеме реализации `simple-service`, а по пресетам — три сервиса в `preset-services`.
-- **Интеграции**: GitHub Gist, OpenAI-совместимый AI API, MCP-сервер с 11 инструментами (`build_schema` — конструктор схемы по спискам пространств/кубиков/связей, `import_project` — схема по исходникам готового проекта).
+- **Интеграции**: GitHub Gist, OpenAI-совместимый AI API, MCP-сервер с 11 инструментами (`build_schema` — конструктор схемы по спискам пространств/кубиков/связей, `import_project` — схема по исходникам готового проекта). Файловые инструменты MCP ограничены каталогом `ARCHCANVAS_MCP_ROOT`, `push_gist` берёт токен только из окружения, API-ключ отправляется только по HTTPS/localhost, данные схемы помечаются в промпте как недоверенные.
 - **Диктовка**: Web Speech API, 18 языков, кнопки в редакторе блока и горячие клавиши.
 - **Планшеты и S Pen**: адаптивная раскладка, масштабируемый интерфейс (80–180 %, авто под экран), жесты двумя пальцами, palm rejection, нажим и наклон пера, боковая кнопка и ластик S Pen. Готов APK для Galaxy Tab S8 Ultra.
 
@@ -105,7 +105,7 @@ python -m http.server 8080
 
 `build_schema`, `import_project`, `read_schema`, `validate_c4`, `export_mermaid`, `build_ai_prompt`, `make_gist_files`, `push_gist`, `list_presets`, `get_preset`, `preset_export`. Пресеты доступны в категориях `architecture` и `process`; подробности — [`architecture-canvas/MCP.md`](architecture-canvas/MCP.md).
 
-Пример подключения — [`mcp-config.example.json`](architecture-canvas/mcp-config.example.json). Для `push_gist` нужен `GITHUB_TOKEN` с правом `gist`.
+Пример подключения — [`mcp-config.example.json`](architecture-canvas/mcp-config.example.json): задайте `ARCHCANVAS_MCP_ROOT` (каталог, где серверу разрешено читать/писать) и `GITHUB_TOKEN` с правом `gist`. Запись через `import_project.output` идёт только в новый файл внутри импортируемого проекта.
 
 ## Проверка
 
