@@ -3080,7 +3080,10 @@
   function buildPrompt(variant) {
     const g = collectGraph();
     const mermaid = mermaidFromGraph(g);
-    const json = JSON.stringify(jsonFromGraph(g), null, 2);
+    const jsonData = jsonFromGraph(g);
+    const savedInstruction = jsonData.instruction;
+    delete jsonData.instruction;
+    const json = JSON.stringify(jsonData, null, 2);
     const prose = proseFromGraph(g);
     let text;
     if (variant === 'png') {
@@ -3105,7 +3108,7 @@
         '', RULES, '', TASK
       ].join('\n');
     }
-    const brief = builderBrief();
+    const brief = savedInstruction || builderBrief();
     return brief ? text + '\n\nДОПОЛНИТЕЛЬНАЯ ИНСТРУКЦИЯ ЗАКАЗЧИКА\n' + brief : text;
   }
 

@@ -194,7 +194,8 @@
     return lines.join('\n');
   }
 
-  function compactSchema(schema) {
+  function compactSchema(schema, options) {
+    const includeInstruction = !options || options.includeInstruction !== false;
     const out = {
       version: 1,
       zones: Array.isArray(schema && schema.zones) ? schema.zones : [],
@@ -219,7 +220,7 @@
       notes: Array.isArray(schema && schema.notes) ? schema.notes : []
     };
     const instruction = String((schema && schema.instruction) || '').trim();
-    if (instruction) out.instruction = instruction;
+    if (instruction && includeInstruction) out.instruction = instruction;
     return out;
   }
 
@@ -279,7 +280,7 @@
 
   function buildPrompt(schema, variant) {
     const mermaid = toMermaid(schema);
-    const json = JSON.stringify(compactSchema(schema), null, 2);
+    const json = JSON.stringify(compactSchema(schema, { includeInstruction: false }), null, 2);
     const notes = (Array.isArray(schema && schema.notes) ? schema.notes : []).map(String);
     let text;
     if (variant === 'png') {
