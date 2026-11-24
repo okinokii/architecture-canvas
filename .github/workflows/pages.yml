@@ -51,6 +51,22 @@ jobs:
         with:
           path: public
 
+      # API артефактов может немного запаздывать: deploy-pages иначе падает
+      # с «No artifacts named github-pages» сразу после успешной загрузки.
+      - name: Wait for Pages artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              --jq '[.artifacts[] | select(.name == "github-pages")] | length')
+            if [ "$count" -ge 1 ]; then echo "Artifact is visible"; exit 0; fi
+            sleep 2
+          done
+          echo "Artifact github-pages did not become visible" >&2
+          exit 1
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
